@@ -15,6 +15,7 @@ export function RoomPage() {
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'participants'>('chat');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [participants, setParticipants] = useState<WsParticipant[]>([]);
 
@@ -106,15 +107,15 @@ export function RoomPage() {
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-surface">
       {/* Top bar */}
-      <header className="bg-surface/80 backdrop-blur-xl flex justify-between items-center px-12 h-16 shadow-[0px_24px_48px_rgba(0,0,0,0.4),0px_0px_12px_rgba(0,98,255,0.1)] z-50 shrink-0">
-        <div className="flex items-center gap-4">
-          <Link to="/" className="text-xl font-black tracking-tighter text-primary">
+      <header className="bg-surface/80 backdrop-blur-xl flex justify-between items-center px-4 md:px-12 h-14 md:h-16 shadow-[0px_24px_48px_rgba(0,0,0,0.4),0px_0px_12px_rgba(0,98,255,0.1)] z-50 shrink-0">
+        <div className="flex items-center gap-2 md:gap-4 min-w-0">
+          <Link to="/" className="text-lg md:text-xl font-black tracking-tighter text-primary shrink-0">
             SyncWatch
           </Link>
-          <div className="h-4 w-[1px] bg-outline-variant/30" />
-          <div className="flex flex-col">
-            <span className="text-on-surface text-sm">{room.name}</span>
-            <span className="text-[10px] uppercase tracking-[0.1em] text-on-surface-variant">
+          <div className="h-4 w-[1px] bg-outline-variant/30 hidden md:block" />
+          <div className="flex flex-col min-w-0">
+            <span className="text-on-surface text-sm truncate">{room.name}</span>
+            <span className="text-[10px] uppercase tracking-[0.1em] text-on-surface-variant hidden md:block">
               Room Code:{' '}
               <button
                 onClick={() => navigator.clipboard.writeText(room.room_code)}
@@ -128,20 +129,27 @@ export function RoomPage() {
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2 md:gap-6 shrink-0">
+          {/* Mobile: toggle sidebar */}
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="md:hidden text-on-surface-variant hover:text-primary text-xl cursor-pointer"
+          >
+            💬
+          </button>
           <button
             onClick={handleLeave}
-            className="text-[12px] uppercase tracking-[0.1em] px-6 py-2 bg-error-container text-on-surface hover:bg-error transition-all cursor-pointer"
+            className="text-[10px] md:text-[12px] uppercase tracking-[0.1em] px-3 md:px-6 py-2 bg-error-container text-on-surface hover:bg-error transition-all cursor-pointer"
           >
-            Leave Room
+            Leave
           </button>
         </div>
       </header>
 
-      <main className="flex flex-1 overflow-hidden">
+      <main className="flex flex-1 overflow-hidden relative">
         {/* Video area */}
-        <section className="flex-[3] flex flex-col">
-          <div className="flex-1 flex items-center justify-center bg-surface-container-lowest p-12">
+        <section className="flex-1 md:flex-[3] flex flex-col">
+          <div className="flex-1 flex items-center justify-center bg-surface-container-lowest p-4 md:p-12">
             <div className="text-center space-y-6">
               <div className="w-20 h-20 mx-auto rounded-full bg-surface-container-high flex items-center justify-center border border-primary-container/20 text-4xl">
                 🎬
@@ -159,7 +167,7 @@ export function RoomPage() {
           </div>
 
           {/* Player controls placeholder */}
-          <div className="h-24 bg-surface-container/60 backdrop-blur-2xl border-t border-outline-variant/20 flex flex-col justify-center px-12 shrink-0">
+          <div className="h-20 md:h-24 bg-surface-container/60 backdrop-blur-2xl border-t border-outline-variant/20 flex flex-col justify-center px-4 md:px-12 shrink-0">
             <div className="w-full mb-4 h-1 bg-surface-container-highest rounded">
               <div className="h-full bg-primary-container rounded" style={{ width: '0%' }} />
             </div>
@@ -180,8 +188,21 @@ export function RoomPage() {
           </div>
         </section>
 
-        {/* Side panel */}
-        <aside className="w-80 bg-[#0e0e0e] border-l border-outline-variant/10 flex flex-col shrink-0">
+        {/* Overlay backdrop for mobile */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* Side panel: overlay on mobile, static on desktop */}
+        <aside className={`
+          fixed right-0 top-14 bottom-0 w-80 z-50 transition-transform duration-300
+          md:static md:top-auto md:bottom-auto md:z-auto md:translate-x-0
+          ${sidebarOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
+          bg-[#0e0e0e] border-l border-outline-variant/10 flex flex-col shrink-0
+        `}>
           <div className="p-6 border-b border-outline-variant/10 shrink-0">
             <div className="flex items-center gap-3 mb-2">
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-primary-container shadow-[0_0_8px_#0062ff]' : 'bg-outline-variant'}`} />

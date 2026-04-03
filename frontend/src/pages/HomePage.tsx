@@ -60,7 +60,7 @@ export function HomePage() {
   return (
     <Layout>
       <section className="mb-16">
-        <h1 className="font-black text-5xl tracking-tighter text-on-surface mb-2">
+        <h1 className="font-black text-3xl md:text-5xl tracking-tighter text-on-surface mb-2">
           Dashboard
         </h1>
         <p className="text-xs uppercase tracking-[0.2em] text-primary">
