@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { getChatHistory, getRoom, leaveRoom } from '../api/rooms';
 import { useAuth } from '../hooks/useAuth';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useVideoSync } from '../hooks/useVideoSync';
 import { ChatPanel } from '../components/room/ChatPanel';
 import { ParticipantList } from '../components/room/ParticipantList';
 import { FileSelector } from '../components/room/FileSelector';
+import { VideoPlayer } from '../components/room/VideoPlayer';
+import { PlaybackControls } from '../components/room/PlaybackControls';
 import type { RoomDetail } from '../types/room';
 import type { ChatMessage, WsMessage, WsParticipant } from '../types/ws';
-import { useRef } from 'react';
 
 export function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -24,6 +26,7 @@ export function RoomPage() {
   const [verifyResult, setVerifyResult] = useState<{ match: boolean; reason?: string; file_version?: number } | null>(null);
   const fileVersionRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const lastSeqRef = useRef(0);
 
   // Fetch room details + chat history via REST
   useEffect(() => {
@@ -91,6 +94,12 @@ export function RoomPage() {
             )
           );
           break;
+        case 'sync_state':
+        case 'sync_check':
+        case 'sync_correction':
+        case 'playback_rate':
+          syncMessageRef.current(msg);
+          break;
         case 'error':
           if (msg.code === 'tab_replaced') {
             navigate('/');
@@ -105,6 +114,16 @@ export function RoomPage() {
     roomId: roomId || '',
     onMessage: handleWsMessage,
   });
+
+  const { handleSyncMessage } = useVideoSync({
+    videoRef,
+    send,
+    fileVersion: fileVersionRef.current,
+    lastSeq: lastSeqRef,
+  });
+
+  const syncMessageRef = useRef(handleSyncMessage);
+  syncMessageRef.current = handleSyncMessage;
 
   const handleVerifyRequest = useCallback(
     (hash: string, size: number, durationMs: number, fileName: string) => {
@@ -124,9 +143,23 @@ export function RoomPage() {
   );
 
   const handleVideoCanPlay = useCallback(() => {
-    // Video element has loaded metadata and can play — NOW we're truly ready
     send('ready', { file_version: fileVersionRef.current });
   }, [send]);
+
+  const handlePlay = useCallback(
+    (timeMs: number) => send('play', { current_time_ms: timeMs }),
+    [send]
+  );
+
+  const handlePause = useCallback(
+    (timeMs: number) => send('pause', { current_time_ms: timeMs }),
+    [send]
+  );
+
+  const handleSeek = useCallback(
+    (timeMs: number) => send('seek', { current_time_ms: timeMs }),
+    [send]
+  );
 
   const handleSendChat = useCallback(
     (content: string): boolean => {
@@ -204,37 +237,20 @@ export function RoomPage() {
               isHost={room.host_id === user?.id}
             />
           ) : (
-            <div className="flex-1 flex items-center justify-center bg-black">
-              <video
-                ref={videoRef}
-                src={fileUrl}
-                className="w-full h-full"
-                controls={false}
-                onCanPlay={handleVideoCanPlay}
-              />
-            </div>
+            <VideoPlayer
+              ref={videoRef}
+              src={fileUrl}
+              onCanPlay={handleVideoCanPlay}
+            />
           )}
 
-          {/* Player controls placeholder */}
-          <div className="h-20 md:h-24 bg-surface-container/60 backdrop-blur-2xl border-t border-outline-variant/20 flex flex-col justify-center px-4 md:px-12 shrink-0">
-            <div className="w-full mb-4 h-1 bg-surface-container-highest rounded">
-              <div className="h-full bg-primary-container rounded" style={{ width: '0%' }} />
-            </div>
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-10">
-                <button className="text-on-surface-variant text-3xl cursor-pointer">▶</button>
-                <span className="text-xs uppercase tracking-widest text-primary-container">
-                  00:00 / 00:00
-                </span>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="text-on-surface-variant text-sm">🔊</span>
-                <div className="w-24 h-[2px] bg-surface-container-highest">
-                  <div className="h-full bg-primary w-2/3" />
-                </div>
-              </div>
-            </div>
-          </div>
+          <PlaybackControls
+            videoRef={videoRef}
+            isHost={room.host_id === user?.id}
+            onPlay={handlePlay}
+            onPause={handlePause}
+            onSeek={handleSeek}
+          />
         </section>
 
         {/* Overlay backdrop for mobile */}
