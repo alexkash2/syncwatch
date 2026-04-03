@@ -1,23 +1,32 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { computeFileHash, getVideoDurationMs } from '../../utils/fileHash';
 
 export type FileStatus = 'idle' | 'hashing' | 'verifying' | 'verified' | 'mismatch' | 'error';
 
 interface FileSelectorProps {
-  onFileReady: (fileUrl: string, hash: string, size: number, durationMs: number) => void;
-  onVerifyRequest: (hash: string, size: number, durationMs: number) => void;
-  verifyResult: { match: boolean; reason?: string } | null;
-  status: FileStatus;
-  setStatus: (status: FileStatus) => void;
+  onFileVerified: (fileUrl: string, hash: string, size: number, durationMs: number) => void;
+  onVerifyRequest: (hash: string, size: number, durationMs: number, fileName: string) => void;
+  verifyResult: { match: boolean; reason?: string; file_version?: number } | null;
+  isHost: boolean;
 }
 
-export function FileSelector({ onFileReady, onVerifyRequest, verifyResult, status, setStatus }: FileSelectorProps) {
+export function FileSelector({ onFileVerified, onVerifyRequest, verifyResult, isHost }: FileSelectorProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [status, setStatus] = useState<FileStatus>('idle');
   const [fileName, setFileName] = useState('');
+  // Track which request the current verifyResult belongs to
+  const requestNonce = useRef(0);
+  const pendingNonce = useRef(0);
+  const pendingFile = useRef<{ url: string; hash: string; size: number; durationMs: number } | null>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Increment nonce to invalidate any pending verify result
+    requestNonce.current++;
+    const myNonce = requestNonce.current;
+    pendingFile.current = null;
 
     setFileName(file.name);
     setStatus('hashing');
@@ -28,33 +37,43 @@ export function FileSelector({ onFileReady, onVerifyRequest, verifyResult, statu
         getVideoDurationMs(file),
       ]);
 
-      setStatus('verifying');
-      onVerifyRequest(hash, file.size, durationMs);
+      // Check if user selected another file while we were hashing
+      if (myNonce !== requestNonce.current) return;
 
-      // Store file URL for when verification succeeds
       const fileUrl = URL.createObjectURL(file);
-      // Save for later use by parent
-      (window as any).__syncwatch_pending_file = { fileUrl, hash, size: file.size, durationMs };
+      pendingFile.current = { url: fileUrl, hash, size: file.size, durationMs };
+      pendingNonce.current = myNonce;
+
+      setStatus('verifying');
+      onVerifyRequest(hash, file.size, durationMs, file.name);
     } catch {
-      setStatus('error');
+      if (myNonce === requestNonce.current) {
+        setStatus('error');
+      }
     }
+
+    // Reset input so same file can be re-selected
+    if (inputRef.current) inputRef.current.value = '';
   };
 
-  // React to verify result
-  if (verifyResult && status === 'verifying') {
-    if (verifyResult.match) {
-      const pending = (window as any).__syncwatch_pending_file;
-      if (pending) {
-        setStatus('verified');
-        onFileReady(pending.fileUrl, pending.hash, pending.size, pending.durationMs);
-        delete (window as any).__syncwatch_pending_file;
-      }
-    } else {
-      setStatus('mismatch');
-    }
-  }
+  // Handle verify result in useEffect (not during render)
+  useEffect(() => {
+    if (!verifyResult || status !== 'verifying') return;
 
-  if (status === 'verified') return null; // Hide selector when file is loaded
+    if (verifyResult.match && pendingFile.current) {
+      const { url, hash, size, durationMs } = pendingFile.current;
+      setStatus('verified');
+      onFileVerified(url, hash, size, durationMs);
+      pendingFile.current = null;
+    } else if (!verifyResult.match) {
+      setStatus('mismatch');
+      // Revoke URL if we had one pending
+      if (pendingFile.current) {
+        URL.revokeObjectURL(pendingFile.current.url);
+        pendingFile.current = null;
+      }
+    }
+  }, [verifyResult, status, onFileVerified]);
 
   return (
     <div className="flex-1 flex items-center justify-center bg-surface-container-lowest p-4 md:p-12">
@@ -69,7 +88,9 @@ export function FileSelector({ onFileReady, onVerifyRequest, verifyResult, statu
               Select a video file to start
             </h2>
             <p className="text-on-surface-variant max-w-xs mx-auto text-sm">
-              Choose a local video file to sync playback with the room.
+              {isHost
+                ? 'Choose a video file. Other participants will need to select the same file.'
+                : 'Choose the same video file as the host to sync playback.'}
             </p>
           </>
         )}
@@ -116,12 +137,15 @@ export function FileSelector({ onFileReady, onVerifyRequest, verifyResult, statu
           </>
         )}
 
-        <button
-          onClick={() => inputRef.current?.click()}
-          className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-br from-primary-container to-[#0053da] text-on-primary-container font-bold uppercase text-xs tracking-widest active:scale-95 transition-all cursor-pointer"
-        >
-          {status === 'idle' ? 'Choose Video File' : 'Try Another File'}
-        </button>
+        {status !== 'verified' && (
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={status === 'hashing' || status === 'verifying'}
+            className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-br from-primary-container to-[#0053da] text-on-primary-container font-bold uppercase text-xs tracking-widest active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+          >
+            {status === 'idle' ? 'Choose Video File' : 'Try Another File'}
+          </button>
+        )}
 
         <input
           ref={inputRef}

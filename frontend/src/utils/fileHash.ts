@@ -4,8 +4,16 @@ export async function computeFileHash(file: File): Promise<string> {
   const fileSize = file.size;
   let combinedBuffer: ArrayBuffer;
 
+  // Size suffix is always appended (both small and large files)
+  const sizeBuf = new ArrayBuffer(8);
+  new DataView(sizeBuf).setBigUint64(0, BigInt(fileSize), false);
+
   if (fileSize <= CHUNK_SIZE * 3) {
-    combinedBuffer = await file.arrayBuffer();
+    const fileBuf = await file.arrayBuffer();
+    const combined = new Uint8Array(fileBuf.byteLength + 8);
+    combined.set(new Uint8Array(fileBuf), 0);
+    combined.set(new Uint8Array(sizeBuf), fileBuf.byteLength);
+    combinedBuffer = combined.buffer;
   } else {
     const headSlice = file.slice(0, CHUNK_SIZE);
     const middleStart = Math.floor(fileSize / 2);
@@ -17,10 +25,6 @@ export async function computeFileHash(file: File): Promise<string> {
       middleSlice.arrayBuffer(),
       tailSlice.arrayBuffer(),
     ]);
-
-    // Append file size as 8-byte big-endian
-    const sizeBuf = new ArrayBuffer(8);
-    new DataView(sizeBuf).setBigUint64(0, BigInt(fileSize), false);
 
     const totalLength = headBuf.byteLength + middleBuf.byteLength + tailBuf.byteLength + 8;
     const combined = new Uint8Array(totalLength);

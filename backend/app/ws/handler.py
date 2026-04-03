@@ -162,49 +162,75 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 file_hash = data.get("file_hash", "")
                 file_size = data.get("file_size", 0)
                 file_duration_ms = data.get("file_duration_ms", 0)
+                file_name = data.get("file_name", "unknown")
 
                 async with async_session() as db:
                     ri = await _get_room_info(db, room_id)
 
-                if not ri or not ri["file_hash"]:
-                    # No reference file set yet — if host, this is the first file
-                    if user_id == host_id:
-                        async with async_session() as db:
-                            from app.services.room_service import update_file_info
-                            await update_file_info(
-                                db, uuid.UUID(room_id), uuid.UUID(user_id),
-                                file_hash, file_size, file_duration_ms,
-                                data.get("file_name", "unknown"),
-                            )
+                is_host = (user_id == host_id)
+                has_reference = ri and ri["file_hash"]
+
+                if is_host and (not has_reference or ri["file_hash"] != file_hash):
+                    # Host sets or changes the reference file
+                    from app.services.room_service import update_file_info
+                    async with async_session() as db:
+                        await update_file_info(
+                            db, uuid.UUID(room_id), uuid.UUID(user_id),
+                            file_hash, file_size, file_duration_ms, file_name,
+                        )
+                    async with async_session() as db:
+                        updated_info = await _get_room_info(db, room_id)
+
+                    if updated_info:
+                        new_version = updated_info["file_version"]
+                        state = manager.room_states.get(room_id)
+                        if state:
+                            state.file_version = new_version
+                            state.room_status = "waiting_ready"
+                            state.is_playing = False
+                            state.current_time_ms = 0
+
                         await manager.send_to_user(room_id, user_id, {
                             "type": "file_verify_response",
                             "match": True,
-                            "file_version": (manager.room_states.get(room_id) or RoomState()).file_version,
+                            "file_version": new_version,
                         })
-                        # Broadcast file_changed to all others
+                        # Broadcast file_changed + reset ready for all others
+                        await manager.broadcast(room_id, {
+                            "type": "file_changed",
+                            "file_hash": updated_info["file_hash"],
+                            "file_size": updated_info["file_size"],
+                            "file_duration_ms": updated_info["file_duration_ms"],
+                            "file_name": updated_info["file_name"],
+                            "file_version": new_version,
+                        }, exclude_user=user_id)
+                        # Broadcast ready=false for all participants
                         async with async_session() as db:
-                            updated_info = await _get_room_info(db, room_id)
-                        if updated_info:
-                            state = manager.room_states.get(room_id)
-                            if state:
-                                state.file_version = updated_info["file_version"]
-                                state.room_status = "waiting_ready"
+                            parts = await _get_participant_info(db, room_id)
+                        for p in parts:
                             await manager.broadcast(room_id, {
-                                "type": "file_changed",
-                                "file_hash": updated_info["file_hash"],
-                                "file_size": updated_info["file_size"],
-                                "file_duration_ms": updated_info["file_duration_ms"],
-                                "file_name": updated_info["file_name"],
-                                "file_version": updated_info["file_version"],
-                            }, exclude_user=user_id)
-                    else:
-                        await manager.send_to_user(room_id, user_id, {
-                            "type": "file_verify_response",
-                            "match": False,
-                            "reason": "Host has not selected a file yet.",
-                        })
+                                "type": "participant_ready",
+                                "user_id": p["user_id"],
+                                "is_ready": False,
+                            })
+
+                elif is_host and has_reference and ri["file_hash"] == file_hash:
+                    # Host re-selected same file
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "file_verify_response",
+                        "match": True,
+                        "file_version": ri["file_version"],
+                    })
+
+                elif not is_host and not has_reference:
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "file_verify_response",
+                        "match": False,
+                        "reason": "Host has not selected a file yet.",
+                    })
+
                 else:
-                    # Compare against reference
+                    # Non-host: compare against reference
                     match = (
                         ri["file_hash"] == file_hash
                         and ri["file_size"] == file_size
@@ -219,6 +245,18 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     })
 
             elif msg_type == "ready":
+                msg_file_version = data.get("file_version", -1)
+                state = manager.room_states.get(room_id)
+                current_version = state.file_version if state else 0
+
+                if msg_file_version != current_version:
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "error",
+                        "code": "file_version_mismatch",
+                        "message": f"Expected file_version {current_version}, got {msg_file_version}",
+                    })
+                    continue
+
                 async with async_session() as db:
                     result = await db.execute(
                         select(RoomParticipant).where(
@@ -236,7 +274,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     "type": "participant_ready",
                     "user_id": user_id,
                     "is_ready": True,
-                    "file_version": data.get("file_version", 0),
+                    "file_version": current_version,
                 })
 
             elif msg_type == "not_ready":

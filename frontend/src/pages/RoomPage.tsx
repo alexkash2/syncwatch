@@ -5,9 +5,10 @@ import { useAuth } from '../hooks/useAuth';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { ChatPanel } from '../components/room/ChatPanel';
 import { ParticipantList } from '../components/room/ParticipantList';
-import { FileSelector, type FileStatus } from '../components/room/FileSelector';
+import { FileSelector } from '../components/room/FileSelector';
 import type { RoomDetail } from '../types/room';
 import type { ChatMessage, WsMessage, WsParticipant } from '../types/ws';
+import { useRef } from 'react';
 
 export function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -19,9 +20,10 @@ export function RoomPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [participants, setParticipants] = useState<WsParticipant[]>([]);
-  const [fileStatus, setFileStatus] = useState<FileStatus>('idle');
   const [fileUrl, setFileUrl] = useState<string | null>(null);
-  const [verifyResult, setVerifyResult] = useState<{ match: boolean; reason?: string } | null>(null);
+  const [verifyResult, setVerifyResult] = useState<{ match: boolean; reason?: string; file_version?: number } | null>(null);
+  const fileVersionRef = useRef(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Fetch room details + chat history via REST
   useEffect(() => {
@@ -71,11 +73,14 @@ export function RoomPage() {
           ]);
           break;
         case 'file_verify_response':
-          setVerifyResult({ match: msg.match, reason: msg.reason });
+          setVerifyResult({ match: msg.match, reason: msg.reason, file_version: msg.file_version });
+          if (msg.match && msg.file_version !== undefined) {
+            fileVersionRef.current = msg.file_version;
+          }
           break;
         case 'file_changed':
-          // Host changed file, reset our state
-          setFileStatus('idle');
+          // Host changed file, reset everyone's state
+          fileVersionRef.current = msg.file_version || 0;
           setFileUrl(null);
           setVerifyResult(null);
           break;
@@ -102,20 +107,26 @@ export function RoomPage() {
   });
 
   const handleVerifyRequest = useCallback(
-    (hash: string, size: number, durationMs: number) => {
-      send('file_verify_request', { file_hash: hash, file_size: size, file_duration_ms: durationMs });
+    (hash: string, size: number, durationMs: number, fileName: string) => {
+      send('file_verify_request', {
+        file_hash: hash, file_size: size, file_duration_ms: durationMs, file_name: fileName,
+      });
     },
     [send]
   );
 
-  const handleFileReady = useCallback(
+  const handleFileVerified = useCallback(
     (url: string, _hash: string, _size: number, _durationMs: number) => {
       setFileUrl(url);
-      setFileStatus('verified');
-      send('ready', { file_version: 0 });
+      // Don't send ready yet — wait for video canplay event
     },
-    [send]
+    []
   );
+
+  const handleVideoCanPlay = useCallback(() => {
+    // Video element has loaded metadata and can play — NOW we're truly ready
+    send('ready', { file_version: fileVersionRef.current });
+  }, [send]);
 
   const handleSendChat = useCallback(
     (content: string): boolean => {
@@ -187,18 +198,19 @@ export function RoomPage() {
         <section className="flex-1 md:flex-[3] flex flex-col">
           {!fileUrl ? (
             <FileSelector
-              onFileReady={handleFileReady}
+              onFileVerified={handleFileVerified}
               onVerifyRequest={handleVerifyRequest}
               verifyResult={verifyResult}
-              status={fileStatus}
-              setStatus={setFileStatus}
+              isHost={room.host_id === user?.id}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-black">
               <video
+                ref={videoRef}
                 src={fileUrl}
                 className="w-full h-full"
                 controls={false}
+                onCanPlay={handleVideoCanPlay}
               />
             </div>
           )}
