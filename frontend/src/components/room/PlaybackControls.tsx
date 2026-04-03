@@ -14,22 +14,31 @@ export function PlaybackControls({ videoRef, isHost, onPlay, onPause, onSeek }: 
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.7);
   const [isSeeking, setIsSeeking] = useState(false);
-  const rafRef = useRef<number>();
 
-  // Update time display
+  // Update time display — use timeupdate event + interval only when playing
   useEffect(() => {
-    const update = () => {
-      const video = videoRef.current;
-      if (video) {
-        if (!isSeeking) setCurrentTime(video.currentTime);
-        setDuration(video.duration || 0);
-        setIsPlaying(!video.paused);
-      }
-      rafRef.current = requestAnimationFrame(update);
+    const video = videoRef.current;
+    if (!video) return;
+
+    const syncState = () => {
+      if (!isSeeking) setCurrentTime(video.currentTime);
+      setDuration(video.duration || 0);
+      setIsPlaying(!video.paused);
     };
-    rafRef.current = requestAnimationFrame(update);
+
+    // Listen to key video events instead of constant rAF
+    video.addEventListener('timeupdate', syncState);
+    video.addEventListener('play', syncState);
+    video.addEventListener('pause', syncState);
+    video.addEventListener('loadedmetadata', syncState);
+    video.addEventListener('seeked', syncState);
+
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      video.removeEventListener('timeupdate', syncState);
+      video.removeEventListener('play', syncState);
+      video.removeEventListener('pause', syncState);
+      video.removeEventListener('loadedmetadata', syncState);
+      video.removeEventListener('seeked', syncState);
     };
   }, [videoRef, isSeeking]);
 
@@ -50,17 +59,22 @@ export function PlaybackControls({ videoRef, isHost, onPlay, onPause, onSeek }: 
     }
   }, [isHost, videoRef, onPlay, onPause]);
 
+  const seekValueRef = useRef(0);
+
   const handleSeekStart = () => setIsSeeking(true);
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setCurrentTime(parseFloat(e.target.value));
+    const val = parseFloat(e.target.value);
+    seekValueRef.current = val;
+    setCurrentTime(val);
   };
 
   const handleSeekEnd = useCallback(() => {
     setIsSeeking(false);
     if (!isHost) return;
-    onSeek(Math.round(currentTime * 1000));
-  }, [isHost, currentTime, onSeek]);
+    // Use ref for latest value, not stale React state
+    onSeek(Math.round(seekValueRef.current * 1000));
+  }, [isHost, onSeek]);
 
   const formatTime = (s: number) => {
     if (!isFinite(s)) return '00:00';

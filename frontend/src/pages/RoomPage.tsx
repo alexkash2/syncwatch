@@ -53,6 +53,20 @@ export function RoomPage() {
       switch (msg.type) {
         case 'room_state':
           setParticipants(msg.participants || []);
+          if (msg.file_version !== undefined) {
+            fileVersionRef.current = msg.file_version;
+          }
+          // Apply initial playback state for late joiners
+          if (msg.playback_state) {
+            const video = videoRef.current;
+            if (video) {
+              const targetSec = (msg.playback_state.current_time_ms || 0) / 1000;
+              video.currentTime = targetSec;
+              if (msg.playback_state.is_playing) {
+                video.play().catch(() => {});
+              }
+            }
+          }
           break;
         case 'user_joined':
           setParticipants((prev) => {
@@ -91,6 +105,13 @@ export function RoomPage() {
           setParticipants((prev) =>
             prev.map((p) =>
               p.user_id === msg.user_id ? { ...p, is_ready: msg.is_ready } : p
+            )
+          );
+          break;
+        case 'participant_status':
+          setParticipants((prev) =>
+            prev.map((p) =>
+              p.user_id === msg.user_id ? { ...p, status: msg.status } : p
             )
           );
           break;
@@ -146,18 +167,25 @@ export function RoomPage() {
     send('ready', { file_version: fileVersionRef.current });
   }, [send]);
 
+  const handleVideoError = useCallback(
+    (errorCode: string) => {
+      send('playback_error', { error_code: errorCode });
+    },
+    [send]
+  );
+
   const handlePlay = useCallback(
-    (timeMs: number) => send('play', { current_time_ms: timeMs }),
+    (timeMs: number) => send('play', { current_time_ms: timeMs, file_version: fileVersionRef.current }),
     [send]
   );
 
   const handlePause = useCallback(
-    (timeMs: number) => send('pause', { current_time_ms: timeMs }),
+    (timeMs: number) => send('pause', { current_time_ms: timeMs, file_version: fileVersionRef.current }),
     [send]
   );
 
   const handleSeek = useCallback(
-    (timeMs: number) => send('seek', { current_time_ms: timeMs }),
+    (timeMs: number) => send('seek', { current_time_ms: timeMs, file_version: fileVersionRef.current }),
     [send]
   );
 
@@ -241,6 +269,7 @@ export function RoomPage() {
               ref={videoRef}
               src={fileUrl}
               onCanPlay={handleVideoCanPlay}
+              onError={handleVideoError}
             />
           )}
 

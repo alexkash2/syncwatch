@@ -42,7 +42,7 @@ export function useVideoSync({ videoRef, send, fileVersion, lastSeq }: UseVideoS
         }
 
         case 'sync_check': {
-          // Report our state back
+          // Only report — server decides correction
           const currentMs = Math.round(video.currentTime * 1000);
           const buffered = video.buffered.length > 0
             ? Math.round((video.buffered.end(video.buffered.length - 1) - video.currentTime) * 1000)
@@ -58,21 +58,6 @@ export function useVideoSync({ videoRef, send, fileVersion, lastSeq }: UseVideoS
             buffer_health_ms: buffered,
             playback_status: status,
           });
-
-          // Self-correction
-          const canonical = (msg.current_time_ms || 0) / 1000;
-          const drift = Math.abs(video.currentTime - canonical);
-
-          if (drift >= 2.0) {
-            video.currentTime = canonical;
-          } else if (drift >= 0.3) {
-            // Nudge
-            video.playbackRate = video.currentTime < canonical ? 1.05 : 0.95;
-            clearTimeout(nudgeTimer.current);
-            nudgeTimer.current = setTimeout(() => {
-              if (videoRef.current) videoRef.current.playbackRate = 1.0;
-            }, 3000);
-          }
           break;
         }
 
@@ -97,7 +82,6 @@ export function useVideoSync({ videoRef, send, fileVersion, lastSeq }: UseVideoS
     [videoRef, send, fileVersion, lastSeq]
   );
 
-  // Cleanup nudge timer
   useEffect(() => {
     return () => clearTimeout(nudgeTimer.current);
   }, []);

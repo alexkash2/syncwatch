@@ -1,4 +1,3 @@
-import asyncio
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -114,12 +113,14 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         k: room_info[k]
         for k in ("file_hash", "file_size", "file_duration_ms", "file_name", "file_version")
     }
+    # Use canonical time (not stale state.current_time_ms) for late joiners
+    canonical_time = get_current_time_ms(state) if state else 0
     await manager.send_to_user(room_id, user_id, {
         "type": "room_state",
         "participants": participants,
         "playback_state": {
             "is_playing": state.is_playing if state else False,
-            "current_time_ms": state.current_time_ms if state else 0,
+            "current_time_ms": canonical_time,
             "playback_rate": state.playback_rate if state else 1.0,
         },
         "file_info": file_info,
@@ -135,23 +136,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         "connection_id": connection_id,
     }, exclude_user=user_id)
 
-    # Heartbeat task: sends sync_check every 3 seconds
-    async def _heartbeat():
-        try:
-            while True:
-                await asyncio.sleep(3)
-                state = manager.room_states.get(room_id)
-                if state and state.is_playing:
-                    await manager.send_to_user(room_id, user_id, {
-                        "type": "sync_check",
-                        "current_time_ms": get_current_time_ms(state),
-                        "is_playing": True,
-                    })
-        except asyncio.CancelledError:
-            pass
-
-    heartbeat_task = asyncio.create_task(_heartbeat())
-
+    # Heartbeat is per-room, managed by ConnectionManager
     # Message loop
     try:
         while True:
@@ -316,53 +301,38 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     "is_ready": False,
                 })
 
-            elif msg_type == "play":
+            elif msg_type in ("play", "pause", "seek"):
                 if user_id != host_id:
                     await manager.send_to_user(room_id, user_id, {
                         "type": "error", "code": "not_host", "message": "Only the host can control playback.",
                     })
                     continue
                 state = manager.room_states.get(room_id)
-                if state:
-                    apply_play(state, data.get("current_time_ms", 0))
-                    await manager.broadcast(room_id, {
-                        "type": "sync_state",
-                        "is_playing": True,
-                        "current_time_ms": state.current_time_ms,
-                        "file_version": state.file_version,
+                if not state:
+                    continue
+                # Validate file_version
+                msg_fv = data.get("file_version")
+                if msg_fv is not None and msg_fv != state.file_version:
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "error", "code": "file_version_mismatch",
+                        "message": "Stale file version.",
                     })
+                    continue
 
-            elif msg_type == "pause":
-                if user_id != host_id:
-                    await manager.send_to_user(room_id, user_id, {
-                        "type": "error", "code": "not_host", "message": "Only the host can control playback.",
-                    })
-                    continue
-                state = manager.room_states.get(room_id)
-                if state:
-                    apply_pause(state, data.get("current_time_ms", 0))
-                    await manager.broadcast(room_id, {
-                        "type": "sync_state",
-                        "is_playing": False,
-                        "current_time_ms": state.current_time_ms,
-                        "file_version": state.file_version,
-                    })
+                time_ms = data.get("current_time_ms", 0)
+                if msg_type == "play":
+                    apply_play(state, time_ms)
+                elif msg_type == "pause":
+                    apply_pause(state, time_ms)
+                else:
+                    apply_seek(state, time_ms)
 
-            elif msg_type == "seek":
-                if user_id != host_id:
-                    await manager.send_to_user(room_id, user_id, {
-                        "type": "error", "code": "not_host", "message": "Only the host can control playback.",
-                    })
-                    continue
-                state = manager.room_states.get(room_id)
-                if state:
-                    apply_seek(state, data.get("current_time_ms", 0))
-                    await manager.broadcast(room_id, {
-                        "type": "sync_state",
-                        "is_playing": state.is_playing,
-                        "current_time_ms": state.current_time_ms,
-                        "file_version": state.file_version,
-                    })
+                await manager.broadcast(room_id, {
+                    "type": "sync_state",
+                    "is_playing": state.is_playing,
+                    "current_time_ms": state.current_time_ms,
+                    "file_version": state.file_version,
+                })
 
             elif msg_type == "sync_report":
                 state = manager.room_states.get(room_id)
@@ -370,7 +340,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     canonical = get_current_time_ms(state)
                     reported = data.get("current_time_ms", 0)
                     playback_status = data.get("playback_status", "playing")
-                    correction = evaluate_drift(canonical, reported, playback_status)
+                    buffer_health = data.get("buffer_health_ms", 0)
+                    correction = evaluate_drift(canonical, reported, playback_status, buffer_health)
                     if correction:
                         await manager.send_to_user(room_id, user_id, correction)
 
@@ -388,7 +359,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     except Exception:
         pass
     finally:
-        heartbeat_task.cancel()
         # Only broadcast user_left if THIS connection is still the active one
         actually_removed = await manager.disconnect(room_id, user_id, connection_id)
         if actually_removed:

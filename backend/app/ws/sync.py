@@ -35,12 +35,18 @@ def apply_seek(state: RoomState, current_time_ms: int) -> None:
 
 
 def evaluate_drift(
-    canonical_ms: int, reported_ms: int, playback_status: str
+    canonical_ms: int, reported_ms: int, playback_status: str,
+    buffer_health_ms: int = 0,
 ) -> dict | None:
     """Evaluate client drift and return correction if needed.
     Returns None if no correction needed."""
     if playback_status in ("buffering", "error", "waiting_interaction"):
         return None  # Don't correct clients that can't play
+
+    # Client is technically playing but nearly out of buffer — don't correct
+    # buffer_health_ms > 0 means client reported it; 0 means unknown (don't skip)
+    if playback_status == "playing" and 0 < buffer_health_ms < 500:
+        return None
 
     drift_ms = abs(canonical_ms - reported_ms)
 

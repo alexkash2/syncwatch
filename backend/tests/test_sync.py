@@ -98,6 +98,19 @@ def test_evaluate_drift_error_ignored():
     assert result is None
 
 
+def test_evaluate_drift_low_buffer_ignored():
+    """Playing but nearly out of buffer — don't correct."""
+    result = evaluate_drift(10000, 7000, "playing", buffer_health_ms=200)
+    assert result is None
+
+
+def test_evaluate_drift_good_buffer_corrects():
+    """Playing with healthy buffer — correct normally."""
+    result = evaluate_drift(10000, 7000, "playing", buffer_health_ms=5000)
+    assert result is not None
+    assert result["type"] == "sync_correction"
+
+
 def test_evaluate_drift_waiting_interaction_ignored():
     result = evaluate_drift(10000, 5000, "waiting_interaction")
     assert result is None
