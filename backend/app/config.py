@@ -1,4 +1,4 @@
-import secrets
+import os
 import warnings
 
 from pydantic_settings import BaseSettings
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     WS_TICKET_EXPIRE_SECONDS: int = 30
     CORS_ORIGINS: str = "http://localhost:3000"
     ALGORITHM: str = "HS256"
+    ENVIRONMENT: str = "development"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
@@ -21,7 +22,12 @@ class Settings(BaseSettings):
 settings = Settings()
 
 if settings.SECRET_KEY == _DEFAULT_SECRET:
+    if settings.ENVIRONMENT == "production":
+        raise RuntimeError(
+            "SECRET_KEY must be set in production! "
+            "Generate one: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
     warnings.warn(
-        "SECRET_KEY is using the default value! Set a real secret in .env for production.",
+        "SECRET_KEY is using the default value. Set a real secret in .env for production.",
         stacklevel=1,
     )
