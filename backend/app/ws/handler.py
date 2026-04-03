@@ -107,6 +107,19 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
 
     host_id = room_info["host_id"]
 
+    # Check if this is a reconnect (user was in grace period)
+    reconnect_data = manager.is_reconnecting(room_id, user_id)
+    if reconnect_data:
+        is_host_reconnect = reconnect_data.get("is_host", False)
+        if is_host_reconnect:
+            # Host reconnected — restore room state
+            state = manager.room_states.get(room_id)
+            if state and state.room_status == "closing":
+                state.room_status = state._pre_closing_status or "paused"
+            await manager.broadcast(room_id, {
+                "type": "host_reconnected",
+            })
+
     # Send room_state to connecting user
     state = manager.room_states.get(room_id)
     file_info = {
@@ -359,15 +372,65 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     except Exception:
         pass
     finally:
-        # Only broadcast user_left if THIS connection is still the active one
         actually_removed = await manager.disconnect(room_id, user_id, connection_id)
         if actually_removed:
-            await manager.broadcast(room_id, {
-                "type": "user_left",
-                "user_id": user_id,
-                "username": username,
-                "reason": "disconnect",
-            })
-            # If host disconnected, close the room for all
-            if user_id == host_id:
-                await manager.close_room(room_id, "host_left")
+            is_host = (user_id == host_id)
+
+            if is_host:
+                # Host disconnect: enter CLOSING state with grace period
+                state = manager.room_states.get(room_id)
+                if state and state.room_status != "closing":
+                    state._pre_closing_status = state.room_status
+                    state.room_status = "closing"
+                    # Autopause
+                    if state.is_playing:
+                        from app.ws.sync import apply_pause, get_current_time_ms
+                        apply_pause(state, get_current_time_ms(state))
+
+                await manager.broadcast(room_id, {
+                    "type": "host_disconnected",
+                    "grace_period_ms": manager.HOST_GRACE_PERIOD_S * 1000
+                    if hasattr(manager, 'HOST_GRACE_PERIOD_S')
+                    else 30000,
+                })
+
+                async def _host_timeout():
+                    await manager.close_room(room_id, "host_timeout")
+                    # Mark room inactive in DB
+                    async with async_session() as db:
+                        from app.models.room import Room as RoomModel
+                        result = await db.execute(
+                            select(RoomModel).where(RoomModel.id == uuid.UUID(room_id))
+                        )
+                        r = result.scalar_one_or_none()
+                        if r:
+                            r.is_active = False
+                            await db.commit()
+
+                manager.start_grace_period(room_id, user_id, True, _host_timeout)
+            else:
+                # Participant disconnect: grace period for reconnect
+                await manager.broadcast(room_id, {
+                    "type": "user_left",
+                    "user_id": user_id,
+                    "username": username,
+                    "reason": "disconnect",
+                })
+
+                async def _participant_timeout():
+                    # Remove participant from DB
+                    async with async_session() as db:
+                        result = await db.execute(
+                            select(RoomParticipant).where(
+                                RoomParticipant.room_id == uuid.UUID(room_id),
+                                RoomParticipant.user_id == uuid.UUID(user_id),
+                                RoomParticipant.left_at == None,
+                            )
+                        )
+                        p = result.scalar_one_or_none()
+                        if p:
+                            from sqlalchemy import func as sa_func
+                            p.left_at = sa_func.now()
+                            await db.commit()
+
+                manager.start_grace_period(room_id, user_id, False, _participant_timeout)

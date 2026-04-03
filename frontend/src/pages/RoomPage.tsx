@@ -24,9 +24,12 @@ export function RoomPage() {
   const [participants, setParticipants] = useState<WsParticipant[]>([]);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<{ match: boolean; reason?: string; file_version?: number } | null>(null);
+  const [hostDisconnected, setHostDisconnected] = useState(false);
+  const [graceCountdown, setGraceCountdown] = useState(0);
   const fileVersionRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSeqRef = useRef(0);
+  const graceTimerRef = useRef<ReturnType<typeof setInterval>>();
 
   // Fetch room details + chat history via REST
   useEffect(() => {
@@ -121,6 +124,28 @@ export function RoomPage() {
         case 'playback_rate':
           syncMessageRef.current(msg);
           break;
+        case 'host_disconnected': {
+          setHostDisconnected(true);
+          const totalSec = Math.round((msg.grace_period_ms || 30000) / 1000);
+          setGraceCountdown(totalSec);
+          clearInterval(graceTimerRef.current);
+          let remaining = totalSec;
+          graceTimerRef.current = setInterval(() => {
+            remaining--;
+            setGraceCountdown(remaining);
+            if (remaining <= 0) clearInterval(graceTimerRef.current);
+          }, 1000);
+          break;
+        }
+        case 'host_reconnected':
+          setHostDisconnected(false);
+          setGraceCountdown(0);
+          clearInterval(graceTimerRef.current);
+          break;
+        case 'room_closed':
+          clearInterval(graceTimerRef.current);
+          navigate('/');
+          break;
         case 'error':
           if (msg.code === 'tab_replaced') {
             navigate('/');
@@ -134,6 +159,8 @@ export function RoomPage() {
   const { send, isConnected } = useWebSocket({
     roomId: roomId || '',
     onMessage: handleWsMessage,
+    lastSeqRef,
+    fileVersionRef,
   });
 
   const { handleSyncMessage } = useVideoSync({
@@ -256,7 +283,19 @@ export function RoomPage() {
 
       <main className="flex flex-1 overflow-hidden relative">
         {/* Video area */}
-        <section className="flex-1 md:flex-[3] flex flex-col">
+        <section className="flex-1 md:flex-[3] flex flex-col relative">
+          {/* Host disconnect overlay */}
+          {hostDisconnected && (
+            <div className="absolute inset-0 z-40 bg-black/70 flex items-center justify-center">
+              <div className="text-center space-y-4">
+                <div className="w-16 h-16 mx-auto border-4 border-error/30 border-t-error rounded-full animate-spin" />
+                <h2 className="text-xl font-bold text-on-surface">Host lost connection</h2>
+                <p className="text-on-surface-variant">
+                  Waiting for reconnect: <span className="text-error font-mono">{graceCountdown}s</span>
+                </p>
+              </div>
+            </div>
+          )}
           {!fileUrl ? (
             <FileSelector
               onFileVerified={handleFileVerified}

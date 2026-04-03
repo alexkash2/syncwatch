@@ -5,15 +5,18 @@ import client from '../api/client';
 interface UseWebSocketOptions {
   roomId: string;
   onMessage: (msg: WsMessage) => void;
+  lastSeqRef?: React.MutableRefObject<number>;
+  fileVersionRef?: React.MutableRefObject<number>;
 }
 
-export function useWebSocket({ roomId, onMessage }: UseWebSocketOptions) {
+export function useWebSocket({ roomId, onMessage, lastSeqRef, fileVersionRef }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectAttempt = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
   const onMessageRef = useRef(onMessage);
   const intentionalClose = useRef(false);
+  const hasConnectedBefore = useRef(false);
   onMessageRef.current = onMessage;
 
   const connect = useCallback(async () => {
@@ -29,6 +32,15 @@ export function useWebSocket({ roomId, onMessage }: UseWebSocketOptions) {
       ws.onopen = () => {
         setIsConnected(true);
         reconnectAttempt.current = 0;
+        // If reconnecting, send reconnect message
+        if (hasConnectedBefore.current) {
+          ws.send(JSON.stringify({
+            type: 'reconnect',
+            last_seq: lastSeqRef?.current ?? 0,
+            file_version: fileVersionRef?.current ?? 0,
+          }));
+        }
+        hasConnectedBefore.current = true;
       };
 
       ws.onmessage = (event) => {
