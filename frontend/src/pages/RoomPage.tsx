@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { getRoom, leaveRoom } from '../api/rooms';
 import { useAuth } from '../hooks/useAuth';
+import { useWebSocket } from '../hooks/useWebSocket';
+import { ChatPanel } from '../components/room/ChatPanel';
+import { ParticipantList } from '../components/room/ParticipantList';
 import type { RoomDetail } from '../types/room';
+import type { ChatMessage, WsMessage, WsParticipant } from '../types/ws';
 
 export function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -10,22 +14,77 @@ export function RoomPage() {
   const { user } = useAuth();
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'chat' | 'participants'>('chat');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [participants, setParticipants] = useState<WsParticipant[]>([]);
 
-  const fetchRoom = useCallback(async () => {
+  // Fetch room details via REST
+  useEffect(() => {
     if (!roomId) return;
-    try {
-      const data = await getRoom(roomId);
-      setRoom(data);
-    } catch {
-      navigate('/');
-    } finally {
-      setLoading(false);
-    }
+    getRoom(roomId)
+      .then((data) => {
+        setRoom(data);
+        setParticipants(
+          data.participants.map((p) => ({
+            user_id: p.user_id,
+            username: p.username,
+            is_ready: p.is_ready,
+          }))
+        );
+      })
+      .catch(() => navigate('/'))
+      .finally(() => setLoading(false));
   }, [roomId, navigate]);
 
-  useEffect(() => {
-    fetchRoom();
-  }, [fetchRoom]);
+  // Handle WS messages
+  const handleWsMessage = useCallback(
+    (msg: WsMessage) => {
+      switch (msg.type) {
+        case 'room_state':
+          setParticipants(msg.participants || []);
+          break;
+        case 'user_joined':
+          setParticipants((prev) => {
+            if (prev.some((p) => p.user_id === msg.user_id)) return prev;
+            return [...prev, { user_id: msg.user_id, username: msg.username, is_ready: false }];
+          });
+          break;
+        case 'user_left':
+          setParticipants((prev) => prev.filter((p) => p.user_id !== msg.user_id));
+          break;
+        case 'chat_message':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: msg.id,
+              user_id: msg.user_id,
+              username: msg.username,
+              content: msg.content,
+              created_at: msg.created_at,
+            },
+          ]);
+          break;
+        case 'error':
+          if (msg.code === 'tab_replaced') {
+            navigate('/');
+          }
+          break;
+      }
+    },
+    [navigate]
+  );
+
+  const { send, isConnected } = useWebSocket({
+    roomId: roomId || '',
+    onMessage: handleWsMessage,
+  });
+
+  const handleSendChat = useCallback(
+    (content: string) => {
+      send('chat_send', { content });
+    },
+    [send]
+  );
 
   const handleLeave = async () => {
     if (!roomId) return;
@@ -43,15 +102,10 @@ export function RoomPage() {
 
   if (!room) return null;
 
-  const isHost = room.host_id === user?.id;
-  const copied = async () => {
-    await navigator.clipboard.writeText(room.room_code);
-  };
-
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-surface">
       {/* Top bar */}
-      <header className="bg-surface/80 backdrop-blur-xl flex justify-between items-center px-12 h-16 shadow-[0px_24px_48px_rgba(0,0,0,0.4),0px_0px_12px_rgba(0,98,255,0.1)] z-50">
+      <header className="bg-surface/80 backdrop-blur-xl flex justify-between items-center px-12 h-16 shadow-[0px_24px_48px_rgba(0,0,0,0.4),0px_0px_12px_rgba(0,98,255,0.1)] z-50 shrink-0">
         <div className="flex items-center gap-4">
           <Link to="/" className="text-xl font-black tracking-tighter text-primary">
             SyncWatch
@@ -61,9 +115,15 @@ export function RoomPage() {
             <span className="text-on-surface text-sm">{room.name}</span>
             <span className="text-[10px] uppercase tracking-[0.1em] text-on-surface-variant">
               Room Code:{' '}
-              <button onClick={copied} className="text-primary-container hover:text-primary transition-colors cursor-pointer">
+              <button
+                onClick={() => navigator.clipboard.writeText(room.room_code)}
+                className="text-primary-container hover:text-primary transition-colors cursor-pointer"
+              >
                 {room.room_code}
               </button>
+              {isConnected && (
+                <span className="ml-3 text-green-500">● Connected</span>
+              )}
             </span>
           </div>
         </div>
@@ -82,8 +142,8 @@ export function RoomPage() {
         <section className="flex-[3] flex flex-col">
           <div className="flex-1 flex items-center justify-center bg-surface-container-lowest p-12">
             <div className="text-center space-y-6">
-              <div className="w-20 h-20 mx-auto rounded-full bg-surface-container-high flex items-center justify-center border border-primary-container/20">
-                <span className="text-primary text-4xl">🎬</span>
+              <div className="w-20 h-20 mx-auto rounded-full bg-surface-container-high flex items-center justify-center border border-primary-container/20 text-4xl">
+                🎬
               </div>
               <h2 className="font-black text-2xl tracking-tight text-on-surface">
                 Select a video file to start
@@ -98,7 +158,7 @@ export function RoomPage() {
           </div>
 
           {/* Player controls placeholder */}
-          <div className="h-24 bg-surface-container/60 backdrop-blur-2xl border-t border-outline-variant/20 flex flex-col justify-center px-12">
+          <div className="h-24 bg-surface-container/60 backdrop-blur-2xl border-t border-outline-variant/20 flex flex-col justify-center px-12 shrink-0">
             <div className="w-full mb-4 h-1 bg-surface-container-highest rounded">
               <div className="h-full bg-primary-container rounded" style={{ width: '0%' }} />
             </div>
@@ -120,46 +180,59 @@ export function RoomPage() {
         </section>
 
         {/* Side panel */}
-        <aside className="w-80 bg-[#0e0e0e] border-l border-outline-variant/10 flex flex-col">
-          <div className="p-6 border-b border-outline-variant/10">
-            <h3 className="font-black text-sm tracking-tight">Participants</h3>
-            <span className="text-[10px] text-on-surface-variant">
-              {room.participants.length} in room
-            </span>
+        <aside className="w-80 bg-[#0e0e0e] border-l border-outline-variant/10 flex flex-col shrink-0">
+          <div className="p-6 border-b border-outline-variant/10 shrink-0">
+            <div className="flex items-center gap-3 mb-2">
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-primary-container shadow-[0_0_8px_#0062ff]' : 'bg-outline-variant'}`} />
+              <span className="text-[10px] uppercase tracking-[0.1em] text-on-surface-variant">
+                {isConnected ? 'Sync Active' : 'Connecting...'}
+              </span>
+            </div>
+            <h3 className="font-black text-sm tracking-tight">Sync Room</h3>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
-            {room.participants.map((p) => (
-              <div
-                key={p.user_id}
-                className="flex items-center gap-3 px-3 py-2 rounded hover:bg-surface-container-low transition-colors"
-              >
-                <div className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-xs font-bold text-primary">
-                  {p.username[0].toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm text-on-surface flex items-center gap-2">
-                    {p.username}
-                    {p.user_id === room.host_id && (
-                      <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-primary-container text-primary-container">
-                        Host
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className={`w-2 h-2 rounded-full ${p.is_ready ? 'bg-green-500' : 'bg-outline-variant'}`} />
-              </div>
-            ))}
+          {/* Tabs */}
+          <div className="flex shrink-0">
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`flex-1 flex flex-col items-center py-3 transition-all cursor-pointer ${
+                activeTab === 'chat'
+                  ? 'text-primary border-l-2 border-primary-container bg-gradient-to-r from-primary-container/10 to-transparent'
+                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+              }`}
+            >
+              <span className="text-lg mb-1">💬</span>
+              <span className="text-[9px] uppercase tracking-[0.1em]">Chat</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('participants')}
+              className={`flex-1 flex flex-col items-center py-3 transition-all cursor-pointer ${
+                activeTab === 'participants'
+                  ? 'text-primary border-l-2 border-primary-container bg-gradient-to-r from-primary-container/10 to-transparent'
+                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+              }`}
+            >
+              <span className="text-lg mb-1">👥</span>
+              <span className="text-[9px] uppercase tracking-[0.1em]">
+                Participants ({participants.length})
+              </span>
+            </button>
           </div>
 
-          {/* Chat placeholder */}
-          <div className="p-4 border-t border-outline-variant/10">
-            <input
-              type="text"
-              className="w-full bg-surface-container-low border-b border-outline-variant/20 focus:border-primary-container focus:outline-none text-sm py-3 px-4 text-on-surface transition-colors"
-              placeholder="Chat coming in Phase 3..."
-              disabled
-            />
+          {/* Tab content */}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {activeTab === 'chat' ? (
+              <ChatPanel
+                messages={messages}
+                onSend={handleSendChat}
+                currentUserId={user?.id || ''}
+              />
+            ) : (
+              <ParticipantList
+                participants={participants}
+                hostId={room.host_id}
+              />
+            )}
           </div>
         </aside>
       </main>

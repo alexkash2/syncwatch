@@ -15,7 +15,9 @@ from app.schemas.room import (
     RoomListResponse,
     RoomResponse,
 )
+from app.schemas.chat import ChatHistoryResponse, ChatMessageResponse
 from app.services import room_service
+from app.services.chat_service import get_history
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
@@ -114,3 +116,29 @@ async def update_file_info(
         body.file_hash, body.file_size, body.file_duration_ms, body.file_name,
     )
     return room
+
+
+@router.get("/{room_id}/messages", response_model=ChatHistoryResponse)
+async def get_chat_history(
+    room_id: uuid.UUID,
+    cursor: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Verify participation
+    await room_service.get_room(db, room_id, current_user.id)
+    messages, next_cursor = await get_history(db, room_id, cursor, limit)
+    return ChatHistoryResponse(
+        messages=[
+            ChatMessageResponse(
+                id=m.id,
+                user_id=m.user_id,
+                username=m.user.username,
+                content=m.content,
+                created_at=m.created_at,
+            )
+            for m in messages
+        ],
+        next_cursor=next_cursor,
+    )

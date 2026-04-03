@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.config import settings
 from app.core.security import cleanup_expired_ws_tickets
+from app.ws.handler import router as ws_router
 
 
 async def _ticket_cleanup_loop():
@@ -33,3 +34,4 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(ws_router)
