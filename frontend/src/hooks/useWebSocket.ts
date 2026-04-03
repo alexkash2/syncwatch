@@ -13,11 +13,13 @@ export function useWebSocket({ roomId, onMessage }: UseWebSocketOptions) {
   const reconnectAttempt = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
   const onMessageRef = useRef(onMessage);
+  const intentionalClose = useRef(false);
   onMessageRef.current = onMessage;
 
   const connect = useCallback(async () => {
+    if (intentionalClose.current) return;
+
     try {
-      // Get ws-ticket via REST
       const { data } = await client.post('/auth/ws-ticket', { room_id: roomId });
       const ticket = data.ticket;
 
@@ -32,19 +34,25 @@ export function useWebSocket({ roomId, onMessage }: UseWebSocketOptions) {
       ws.onmessage = (event) => {
         try {
           const msg: WsMessage = JSON.parse(event.data);
+          // Don't reconnect if tab was replaced
+          if (msg.type === 'error' && msg.code === 'tab_replaced') {
+            intentionalClose.current = true;
+          }
           onMessageRef.current(msg);
         } catch {
-          // Invalid JSON, ignore
+          // Invalid JSON
         }
       };
 
       ws.onclose = () => {
         setIsConnected(false);
         wsRef.current = null;
-        // Reconnect with exponential backoff
-        const delay = Math.min(1000 * 2 ** reconnectAttempt.current, 30000);
-        reconnectAttempt.current++;
-        reconnectTimer.current = setTimeout(connect, delay);
+        // Only reconnect if not intentionally closed
+        if (!intentionalClose.current) {
+          const delay = Math.min(1000 * 2 ** reconnectAttempt.current, 30000);
+          reconnectAttempt.current++;
+          reconnectTimer.current = setTimeout(connect, delay);
+        }
       };
 
       ws.onerror = () => {
@@ -53,25 +61,30 @@ export function useWebSocket({ roomId, onMessage }: UseWebSocketOptions) {
 
       wsRef.current = ws;
     } catch {
-      // Failed to get ticket, retry
-      const delay = Math.min(1000 * 2 ** reconnectAttempt.current, 30000);
-      reconnectAttempt.current++;
-      reconnectTimer.current = setTimeout(connect, delay);
+      if (!intentionalClose.current) {
+        const delay = Math.min(1000 * 2 ** reconnectAttempt.current, 30000);
+        reconnectAttempt.current++;
+        reconnectTimer.current = setTimeout(connect, delay);
+      }
     }
   }, [roomId]);
 
   useEffect(() => {
+    intentionalClose.current = false;
     connect();
     return () => {
+      intentionalClose.current = true;
       clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
   }, [connect]);
 
-  const send = useCallback((type: string, payload: Record<string, any> = {}) => {
+  const send = useCallback((type: string, payload: Record<string, any> = {}): boolean => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type, ...payload }));
+      return true;
     }
+    return false;
   }, []);
 
   return { send, isConnected };

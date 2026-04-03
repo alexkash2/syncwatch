@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
-import { getRoom, leaveRoom } from '../api/rooms';
+import { getChatHistory, getRoom, leaveRoom } from '../api/rooms';
 import { useAuth } from '../hooks/useAuth';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { ChatPanel } from '../components/room/ChatPanel';
@@ -18,11 +18,11 @@ export function RoomPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [participants, setParticipants] = useState<WsParticipant[]>([]);
 
-  // Fetch room details via REST
+  // Fetch room details + chat history via REST
   useEffect(() => {
     if (!roomId) return;
-    getRoom(roomId)
-      .then((data) => {
+    Promise.all([getRoom(roomId), getChatHistory(roomId)])
+      .then(([data, history]) => {
         setRoom(data);
         setParticipants(
           data.participants.map((p) => ({
@@ -31,6 +31,7 @@ export function RoomPage() {
             is_ready: p.is_ready,
           }))
         );
+        setMessages(history.messages);
       })
       .catch(() => navigate('/'))
       .finally(() => setLoading(false));
@@ -80,8 +81,8 @@ export function RoomPage() {
   });
 
   const handleSendChat = useCallback(
-    (content: string) => {
-      send('chat_send', { content });
+    (content: string): boolean => {
+      return send('chat_send', { content });
     },
     [send]
   );

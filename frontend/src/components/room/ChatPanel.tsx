@@ -3,12 +3,13 @@ import type { ChatMessage } from '../../types/ws';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
-  onSend: (content: string) => void;
+  onSend: (content: string) => boolean;
   currentUserId: string;
 }
 
 export function ChatPanel({ messages, onSend, currentUserId }: ChatPanelProps) {
   const [input, setInput] = useState('');
+  const [sendError, setSendError] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -19,8 +20,14 @@ export function ChatPanel({ messages, onSend, currentUserId }: ChatPanelProps) {
     e.preventDefault();
     const content = input.trim();
     if (!content) return;
-    onSend(content);
-    setInput('');
+    const sent = onSend(content);
+    if (sent) {
+      setInput('');
+      setSendError(false);
+    } else {
+      setSendError(true);
+      setTimeout(() => setSendError(false), 3000);
+    }
   };
 
   return (
@@ -47,6 +54,9 @@ export function ChatPanel({ messages, onSend, currentUserId }: ChatPanelProps) {
       </div>
 
       <form onSubmit={handleSubmit} className="p-4 border-t border-outline-variant/10">
+        {sendError && (
+          <p className="text-error text-[10px] mb-2">Not connected. Message not sent.</p>
+        )}
         <div className="relative">
           <input
             type="text"

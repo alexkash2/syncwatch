@@ -1,5 +1,11 @@
 import type { Room, RoomDetail, RoomListResponse } from '../types/room';
+import type { ChatMessage } from '../types/ws';
 import client from './client';
+
+interface ChatHistoryResponse {
+  messages: ChatMessage[];
+  next_cursor: string | null;
+}
 
 export async function createRoom(name: string): Promise<Room> {
   const res = await client.post<Room>('/rooms/', { name });
@@ -23,4 +29,11 @@ export async function joinRoom(roomCode: string): Promise<Room> {
 
 export async function leaveRoom(roomId: string): Promise<void> {
   await client.post(`/rooms/${roomId}/leave`);
+}
+
+export async function getChatHistory(roomId: string, cursor?: string): Promise<ChatHistoryResponse> {
+  const params: Record<string, any> = { limit: 50 };
+  if (cursor) params.cursor = cursor;
+  const res = await client.get<ChatHistoryResponse>(`/rooms/${roomId}/messages`, { params });
+  return res.data;
 }

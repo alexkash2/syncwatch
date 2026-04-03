@@ -18,7 +18,6 @@ MAX_CHAT_LENGTH = 2000
 
 
 async def _get_participant_info(db: AsyncSession, room_id: str):
-    """Get active participants with usernames for room_state."""
     result = await db.execute(
         select(RoomParticipant, User.username)
         .join(User, RoomParticipant.user_id == User.id)
@@ -38,14 +37,16 @@ async def _get_participant_info(db: AsyncSession, room_id: str):
     return participants
 
 
-async def _get_room_file_info(db: AsyncSession, room_id: str) -> dict:
+async def _get_room_info(db: AsyncSession, room_id: str) -> dict | None:
     result = await db.execute(
         select(Room).where(Room.id == uuid.UUID(room_id))
     )
     room = result.scalar_one_or_none()
     if not room:
-        return {}
+        return None
     return {
+        "host_id": str(room.host_id),
+        "is_active": room.is_active,
         "file_hash": room.file_hash,
         "file_size": room.file_size,
         "file_duration_ms": room.file_duration,
@@ -56,7 +57,6 @@ async def _get_room_file_info(db: AsyncSession, room_id: str) -> dict:
 
 @router.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
-    # Validate ticket from query params
     ticket = websocket.query_params.get("ticket")
     if not ticket:
         await websocket.close(code=4001, reason="Missing ticket")
@@ -89,18 +89,29 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         except Exception:
             pass
 
-    # Get username for broadcasts
+    # Get username and room info
     async with async_session() as db:
         result = await db.execute(
             select(User.username).where(User.id == uuid.UUID(user_id))
         )
         username = result.scalar_one_or_none() or "Unknown"
-
-        # Send room_state to the connecting user
         participants = await _get_participant_info(db, room_id)
-        file_info = await _get_room_file_info(db, room_id)
+        room_info = await _get_room_info(db, room_id)
 
+    if not room_info or not room_info["is_active"]:
+        await websocket.send_json({"type": "room_closed", "reason": "deleted"})
+        await websocket.close(code=4000)
+        await manager.disconnect(room_id, user_id, connection_id)
+        return
+
+    host_id = room_info["host_id"]
+
+    # Send room_state to connecting user
     state = manager.room_states.get(room_id)
+    file_info = {
+        k: room_info[k]
+        for k in ("file_hash", "file_size", "file_duration_ms", "file_name", "file_version")
+    }
     await manager.send_to_user(room_id, user_id, {
         "type": "room_state",
         "participants": participants,
@@ -133,13 +144,11 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 if not content or len(content) > MAX_CHAT_LENGTH:
                     continue
 
-                # Persist to DB
                 async with async_session() as db:
                     msg = await save_message(
                         db, uuid.UUID(room_id), uuid.UUID(user_id), content
                     )
 
-                # Broadcast to all
                 await manager.broadcast(room_id, {
                     "type": "chat_message",
                     "id": str(msg.id),
@@ -149,18 +158,22 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     "created_at": msg.created_at.isoformat(),
                 })
 
-            # Other message types will be handled in Phase 4-5
-            # For now, unknown types are silently ignored
+            # Other message types handled in Phase 4-5
 
     except WebSocketDisconnect:
         pass
     except Exception:
         pass
     finally:
-        await manager.disconnect(room_id, user_id)
-        await manager.broadcast(room_id, {
-            "type": "user_left",
-            "user_id": user_id,
-            "username": username,
-            "reason": "disconnect",
-        })
+        # Only broadcast user_left if THIS connection is still the active one
+        actually_removed = await manager.disconnect(room_id, user_id, connection_id)
+        if actually_removed:
+            await manager.broadcast(room_id, {
+                "type": "user_left",
+                "user_id": user_id,
+                "username": username,
+                "reason": "disconnect",
+            })
+            # If host disconnected, close the room for all
+            if user_id == host_id:
+                await manager.close_room(room_id, "host_left")
