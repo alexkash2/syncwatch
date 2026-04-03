@@ -1,6 +1,9 @@
-import time
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from app.core.security import (
+    _ws_tickets,
+    cleanup_expired_ws_tickets,
     create_access_token,
     create_refresh_token,
     create_ws_ticket,
@@ -69,3 +72,27 @@ def test_ws_ticket_one_time_use():
 
 def test_ws_ticket_invalid():
     assert validate_ws_ticket("nonexistent-ticket") is None
+
+
+def test_ws_ticket_expired():
+    user_id = "550e8400-e29b-41d4-a716-446655440000"
+    room_id = "660e8400-e29b-41d4-a716-446655440000"
+    ticket = create_ws_ticket(user_id, room_id)
+    # Manually expire the ticket
+    _ws_tickets[ticket]["expire"] = datetime.now(timezone.utc) - timedelta(seconds=1)
+    assert validate_ws_ticket(ticket) is None
+
+
+def test_cleanup_expired_ws_tickets():
+    user_id = "550e8400-e29b-41d4-a716-446655440000"
+    room_id = "660e8400-e29b-41d4-a716-446655440000"
+    # Create two tickets, expire one
+    t1 = create_ws_ticket(user_id, room_id)
+    t2 = create_ws_ticket(user_id, room_id)
+    _ws_tickets[t1]["expire"] = datetime.now(timezone.utc) - timedelta(seconds=1)
+    cleaned = cleanup_expired_ws_tickets()
+    assert cleaned == 1
+    assert t1 not in _ws_tickets
+    assert t2 in _ws_tickets
+    # Clean up
+    validate_ws_ticket(t2)

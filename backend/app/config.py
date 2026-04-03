@@ -1,9 +1,14 @@
+import secrets
+import warnings
+
 from pydantic_settings import BaseSettings
+
+_DEFAULT_SECRET = "change-me-in-production"
 
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://syncwatch:syncwatch@localhost:5432/syncwatch"
-    SECRET_KEY: str = "change-me-in-production"
+    SECRET_KEY: str = _DEFAULT_SECRET
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     WS_TICKET_EXPIRE_SECONDS: int = 30
@@ -14,3 +19,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if settings.SECRET_KEY == _DEFAULT_SECRET:
+    warnings.warn(
+        "SECRET_KEY is using the default value! Set a real secret in .env for production.",
+        stacklevel=1,
+    )

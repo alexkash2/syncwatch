@@ -1,4 +1,7 @@
+import uuid
+
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestError, ConflictError
@@ -28,7 +31,11 @@ async def register_user(
         password_hash=hash_password(password),
     )
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError("User with this email or username already exists")
     await db.refresh(user)
     return user
 
@@ -52,7 +59,11 @@ async def refresh_tokens(db: AsyncSession, refresh_token: str) -> TokenResponse:
     if payload is None:
         raise BadRequestError("Invalid or expired refresh token")
 
-    user_id = payload.get("sub")
+    user_id_str = payload.get("sub")
+    try:
+        user_id = uuid.UUID(user_id_str)
+    except (ValueError, TypeError):
+        raise BadRequestError("Invalid token payload")
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:

@@ -66,3 +66,11 @@ def validate_ws_ticket(ticket: str) -> dict | None:
     if datetime.now(timezone.utc) > data["expire"]:
         return None
     return data
+
+
+def cleanup_expired_ws_tickets() -> int:
+    now = datetime.now(timezone.utc)
+    expired = [k for k, v in _ws_tickets.items() if now > v["expire"]]
+    for k in expired:
+        del _ws_tickets[k]
+    return len(expired)
