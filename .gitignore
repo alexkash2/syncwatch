@@ -32,3 +32,10 @@ docker-compose.override.yml
 
 # Build output
 frontend/dist/
+
+# Pytest
+.pytest_cache/
+backend/.pytest_cache/
+
+# Claude
+.claude/

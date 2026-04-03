@@ -1,0 +1,141 @@
+Design a web application called "SyncWatch" — a synchronized video player for watching movies together online. Dark theme, modern and clean UI. The app should feel like a mix between Discord and a media player. No unnecessary decorations — functional, minimal, and sleek.
+
+The design must contain EXACTLY these 5 screens and nothing else. Do not invent extra screens, popups, or features beyond what is described below.
+
+Tech context: this will be built with React + Tailwind CSS. Design for desktop browsers (1920x1080 primary). Mobile is NOT needed.
+
+==========================================================
+SCREEN 1: LOGIN PAGE
+==========================================================
+Route: /login
+Layout: centered card on a dark background.
+
+Elements:
+- App logo/name "SyncWatch" at the top of the card
+- Email input field (placeholder: "Email")
+- Password input field (placeholder: "Password")
+- "Log in" button (primary, full width of the card)
+- Text link below: "Don't have an account? Register" — links to Register page
+- No social login buttons. No "forgot password". Keep it simple.
+
+==========================================================
+SCREEN 2: REGISTER PAGE
+==========================================================
+Route: /register
+Layout: identical to Login page, same centered card style.
+
+Elements:
+- App logo/name "SyncWatch" at the top
+- Username input field (placeholder: "Username")
+- Email input field (placeholder: "Email")
+- Password input field (placeholder: "Password")
+- Confirm password input field (placeholder: "Confirm password")
+- "Create account" button (primary, full width)
+- Text link below: "Already have an account? Log in" — links to Login page
+
+==========================================================
+SCREEN 3: HOME PAGE (Dashboard)
+==========================================================
+Route: /
+Layout: full page with a top header bar and centered content area.
+
+TOP HEADER BAR (present on this page and Room page):
+- Left side: "SyncWatch" logo/name (clickable, goes to home)
+- Right side: username display + avatar placeholder (circle with first letter) + "Log out" button
+
+MAIN CONTENT — two sections side by side (or stacked):
+
+Section A: "Create Room"
+- Room name input field (placeholder: "Room name")
+- "Create room" button (primary)
+- That's it. Nothing else.
+
+Section B: "Join Room"
+- Room code input field (placeholder: "Enter room code")
+- "Join" button (primary)
+
+Section C: "My Rooms" (below the two sections above)
+- A list/table of rooms the user is in or has created
+- Each row shows: room name, room code, role (Host / Viewer), creation date
+- Clicking a room row opens that room (navigates to Room page)
+- If no rooms — show a simple "No rooms yet" placeholder text
+- Maximum 10-15 visible rows, no need for pagination in the design
+
+==========================================================
+SCREEN 4: ROOM PAGE (the main watch-together screen)
+==========================================================
+Route: /room/:id
+This is the most important and complex screen. Layout: full viewport, no scrolling.
+
+STRUCTURE — 3 areas:
+[LEFT: Video area (takes ~70-75% width)] [RIGHT: Side panel (~25-30% width)]
+
+--- LEFT SIDE: VIDEO AREA ---
+
+Top bar (inside video area):
+- Room name (left)
+- Room code with a small "Copy" icon button next to it (right)
+- Small "Leave room" button (right corner, subtle/secondary style)
+
+Video player (center, takes most of the space):
+- Large black rectangle where the video will play
+- If no file selected yet: show a centered message "Select a video file to start" with a file selection button
+
+Bottom controls bar (below the video):
+- Play/Pause button (icon)
+- Current time / Total duration display (e.g., "01:23:45 / 02:15:30")
+- Progress/seek bar (horizontal slider, full width between time and volume)
+- Volume icon + volume slider (small, on the right side)
+- Fullscreen button (icon, rightmost)
+
+IMPORTANT: These playback controls should look like they belong to a real video player (think YouTube or VLC style). The play/pause and seek bar are functional for the host only. For non-host users they will be shown but disabled/read-only — but in the design, just show them in their normal state.
+
+--- RIGHT SIDE: SIDE PANEL ---
+
+The side panel has TWO tabs at the top:
+- Tab 1: "Chat" (default active)
+- Tab 2: "Participants"
+
+WHEN "Chat" TAB IS ACTIVE:
+- Message list area (scrollable, takes most of the panel height)
+- Each message: username (bold) + message text + timestamp (small, gray)
+- Messages from current user aligned slightly differently or have a subtle highlight
+- At the bottom: message input field (placeholder: "Type a message...") + Send button (icon or text)
+
+WHEN "Participants" TAB IS ACTIVE:
+- List of participants in the room
+- Each entry: avatar placeholder (circle) + username + status indicator
+- Status indicators: "Ready" (green dot/badge), "Not ready" (gray dot/badge), "Host" (crown icon or special badge next to name)
+- The host user should be visually distinguishable (shown first, or with a host badge)
+
+--- FILE SELECTION STATE ---
+When a user first enters the room and hasn't selected a file yet, show an overlay or prominent area in the video player zone:
+- Large file selection button: "Choose video file"
+- Text below: "Select the same video file as the host to sync playback"
+- After file is selected and being verified: show a small spinner with "Verifying file..."
+- After verification success: the overlay disappears, video is loaded
+- After verification failure: show error text in red "File does not match. Please select the correct file." with a "Try again" button
+
+==========================================================
+SCREEN 5: 404 PAGE
+==========================================================
+Route: any unknown route
+Layout: centered on page, minimal.
+
+Elements:
+- Large "404" text
+- "Page not found" subtitle
+- "Go home" button — links back to Home page
+
+==========================================================
+GLOBAL DESIGN RULES
+==========================================================
+- Color scheme: DARK theme. Dark gray/near-black backgrounds (#0f0f0f, #1a1a1a, #242424 range). Primary accent color: blue (#3b82f6 or similar). Text: white and gray shades.
+- Font: clean sans-serif (Inter, or system default sans-serif)
+- Border radius: slightly rounded (6-8px for cards and buttons)
+- No gradients, no shadows except very subtle ones. Flat modern design.
+- Buttons: solid fill for primary actions, outline/ghost for secondary actions
+- Input fields: dark background, subtle border, lighter text
+- Do NOT add any features, buttons, screens, modals, or elements that are not described above
+- Do NOT add: settings page, profile page, notifications, dark/light mode toggle, language selector, footer, social links, or any other extras
+- The design should be production-ready in terms of spacing and proportions — not a wireframe, but a real UI design that can be directly implemented in code

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&amp;family=Manrope:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed": "#dbe1ff",
+                        "on-tertiary-container": "#fff1ed",
+                        "on-primary-fixed": "#00174b",
+                        "on-tertiary-fixed": "#390c00",
+                        "inverse-on-surface": "#313030",
+                        "surface-tint": "#b4c5ff",
+                        "on-secondary-fixed-variant": "#474646",
+                        "primary-container": "#0062ff",
+                        "surface-bright": "#3a3939",
+                        "on-surface-variant": "#c2c6d9",
+                        "on-tertiary": "#5c1900",
+                        "on-error": "#690005",
+                        "surface": "#131313",
+                        "outline": "#8c90a2",
+                        "on-secondary-container": "#bab8b7",
+                        "background": "#131313",
+                        "surface-dim": "#131313",
+                        "outline-variant": "#424656",
+                        "on-tertiary-fixed-variant": "#832700",
+                        "inverse-surface": "#e5e2e1",
+                        "on-background": "#e5e2e1",
+                        "inverse-primary": "#0053da",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-highest": "#353534",
+                        "on-secondary": "#313030",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "tertiary-container": "#c84000",
+                        "surface-variant": "#353534",
+                        "on-surface": "#e5e2e1",
+                        "error": "#ffb4ab",
+                        "surface-container-high": "#2a2a2a",
+                        "tertiary-fixed-dim": "#ffb59c",
+                        "on-primary-container": "#f3f3ff",
+                        "error-container": "#93000a",
+                        "surface-container-low": "#1c1b1b",
+                        "on-secondary-fixed": "#1c1b1b",
+                        "primary": "#b4c5ff",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "secondary-fixed-dim": "#c9c6c5",
+                        "tertiary": "#ffb59c",
+                        "secondary-container": "#4a4949",
+                        "surface-container-lowest": "#0e0e0e",
+                        "secondary-fixed": "#e5e2e1",
+                        "secondary": "#c9c6c5",
+                        "on-primary": "#002a78",
+                        "surface-container": "#201f1f",
+                        "tertiary-fixed": "#ffdbcf"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Manrope"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .editorial-glow {
+            text-shadow: 0 0 30px rgba(0, 98, 255, 0.3);
+        }
+        .glass-panel {
+            background: rgba(58, 57, 57, 0.6);
+            backdrop-filter: blur(20px);
+        }
+        .primary-gradient {
+            background: linear-gradient(135deg, #0062ff 0%, #0053da 100%);
+        }
+        .deep-void {
+            background: radial-gradient(circle at center, #1c1b1b 0%, #131313 100%);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary-container selection:text-on-primary-container min-h-screen overflow-hidden">
+<!-- Top Navigation Bar (Suppressed items for 404 focus, following Shell Visibility rules) -->
+<nav class="fixed top-0 w-full z-50 bg-[#131313]/80 backdrop-blur-xl flex justify-between items-center px-12 h-16 w-full shadow-[0px_24px_48px_rgba(0,0,0,0.4),0px_0px_12px_rgba(0,98,255,0.1)]">
+<div class="flex items-center gap-2">
+<span class="text-xl font-black tracking-tighter text-[#b4c5ff]">SyncWatch</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="h-8 w-8 rounded-full bg-surface-container-highest border border-outline-variant/20 overflow-hidden">
+<img alt="User profile avatar" class="w-full h-full object-cover" data-alt="Close-up portrait of a professional male editor in a dark studio setting with soft blue ambient light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuATXaCYIpW0dWc8EMphyU5G4U2w0DWHF24Huz85HBo8mxVYQ2OIcD3NLzb04arL1b24qSpe4TQ9UfKgHMXz7E8OinwyUYYlQ0rCgZ8hNB7m9PdTbYDXFlv1edpEvl5X4oG25n8UrjawpX9zSJZ8UdOQ3ZnKgW2bp4Uv5UpnNa3zWLgNHwY7th9-yhO4pjPuSDFBcg3iURLSmN-KxfAa1pYGtU24pVEUhJ6Wgin_7codnGsyvKdED4pEfRFpgctJFmme6NfUBneHQseV"/>
+</div>
+</div>
+</nav>
+<!-- Main Canvas -->
+<main class="relative h-screen w-full flex flex-col items-center justify-center deep-void px-6">
+<!-- Decorative Ambient Light -->
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-container/10 rounded-full blur-[120px] pointer-events-none"></div>
+<!-- 404 Content Area -->
+<div class="relative z-10 flex flex-col items-center text-center">
+<!-- Technical Tag -->
+<div class="mb-6">
+<span class="font-label text-[10px] uppercase tracking-[0.2em] text-primary border border-primary-container/30 px-3 py-1 rounded-sm glass-panel">
+                    Error Code: 0x404
+                </span>
+</div>
+<!-- Large Elegant 404 -->
+<h1 class="text-[12rem] md:text-[18rem] font-black leading-none tracking-tighter text-on-surface editorial-glow opacity-90 mb-2">
+                404
+            </h1>
+<!-- Subtitle -->
+<div class="flex flex-col gap-2 mb-12">
+<h2 class="text-2xl md:text-3xl font-headline font-bold tracking-tight text-on-surface-variant">
+                    Page not found
+                </h2>
+<p class="text-on-surface-variant/60 font-body max-w-md mx-auto leading-relaxed">
+                    The page you are looking for does not exist. It may have been moved or removed.
+                </p>
+</div>
+<!-- Action Area -->
+<div class="flex flex-col md:flex-row gap-4 items-center">
+<a class="primary-gradient text-on-primary-container px-10 py-4 font-label text-xs font-bold uppercase tracking-widest rounded-lg transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,98,255,0.4)] active:scale-95 group flex items-center gap-3" href="/">
+<span class="material-symbols-outlined text-sm">home</span>
+                    Go home
+                </a>
+<button class="bg-transparent border border-outline-variant/20 backdrop-blur-md text-on-surface px-10 py-4 font-label text-xs font-bold uppercase tracking-widest rounded-lg transition-all duration-300 hover:bg-surface-bright/20 active:scale-95 flex items-center gap-3">
+<span class="material-symbols-outlined text-sm">history</span>
+                    Go back
+                </button>
+</div>
+</div>
+<!-- Background Image/Texture Integration -->
+<div class="absolute inset-0 z-0 opacity-20 pointer-events-none">
+<img alt="Celestial view" class="w-full h-full object-cover" data-alt="Cinematic wide shot of deep space with subtle blue nebulae and distant sharp stars, high-end editorial film look" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-XuJofO6Ps5TbPuO1A3C9rIByLDXm31KtfdJ5RnFealmsKt4oDxkFUVSkgBHT_0RTNv6_R98ANxVGRnJXQCfufxHmG4NQ52TcSoGRuw5Z_5CPlrXsgbkbfUSlLn-zY2tPtvj7uhLXhu6lAtE_x6RJCvnReReMBSAXru-61OQXihhmrCQkMofkmM79DKH69kHE1nDmKakVHSRReQUoyoNtowZR64layqsZrcvKEe9DKm-vuHfl8Y0B-Zd1eEkimlC0hRHkiMR4jESl"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-surface"></div>
+</div>
+</main>
+</body></html>

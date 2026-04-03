@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SyncWatch - Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400;500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container": "#201f1f",
+                    "on-error": "#690005",
+                    "background": "#131313",
+                    "on-background": "#e5e2e1",
+                    "primary-container": "#4d8eff",
+                    "on-secondary": "#182f59",
+                    "surface": "#131313",
+                    "outline-variant": "#424754",
+                    "on-primary": "#002e6a",
+                    "primary-fixed-dim": "#adc6ff",
+                    "on-error-container": "#ffdad6",
+                    "on-secondary-fixed": "#001a42",
+                    "secondary-fixed": "#d8e2ff",
+                    "inverse-primary": "#005ac2",
+                    "secondary-container": "#304671",
+                    "outline": "#8c909f",
+                    "surface-variant": "#353534",
+                    "on-tertiary-fixed": "#311400",
+                    "surface-container-highest": "#353534",
+                    "tertiary-container": "#df7412",
+                    "tertiary-fixed": "#ffdcc6",
+                    "primary": "#adc6ff",
+                    "inverse-on-surface": "#313030",
+                    "secondary": "#b1c6f9",
+                    "surface-container-lowest": "#0e0e0e",
+                    "on-primary-fixed": "#001a42",
+                    "inverse-surface": "#e5e2e1",
+                    "primary-fixed": "#d8e2ff",
+                    "surface-bright": "#3a3939",
+                    "error": "#ffb4ab",
+                    "on-tertiary-fixed-variant": "#723600",
+                    "on-primary-fixed-variant": "#004395",
+                    "secondary-fixed-dim": "#b1c6f9",
+                    "on-secondary-container": "#9fb5e7",
+                    "on-primary-container": "#00285d",
+                    "surface-dim": "#131313",
+                    "surface-tint": "#adc6ff",
+                    "tertiary-fixed-dim": "#ffb786",
+                    "on-tertiary-container": "#461f00",
+                    "on-tertiary": "#502400",
+                    "error-container": "#93000a",
+                    "surface-container-high": "#2a2a2a",
+                    "on-secondary-fixed-variant": "#304671",
+                    "surface-container-low": "#1c1b1b",
+                    "tertiary": "#ffb786",
+                    "on-surface": "#e5e2e1",
+                    "on-surface-variant": "#c2c6d6"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "fontFamily": {
+                    "headline": ["Inter"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #131313; color: #e5e2e1; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .glass-panel {
+            background: rgba(42, 42, 42, 0.4);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen selection:bg-primary selection:text-on-primary">
+<!-- TopNavBar -->
+<header class="bg-[#131313] docked full-width top-0 z-50">
+<nav class="flex justify-between items-center w-full px-6 py-4 bg-[#1a1a1a] flat no shadows">
+<a class="text-2xl font-black tracking-tighter text-blue-400" href="/">SyncWatch</a>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-3">
+<span class="font-['Inter'] tracking-wider uppercase text-xs text-gray-400">Alex</span>
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-xs">
+                        A
+                    </div>
+</div>
+<button class="font-['Inter'] tracking-wider uppercase text-xs text-gray-400 hover:bg-[#2a2a2a] transition-colors duration-200 px-4 py-2 rounded-lg border border-outline-variant/15 active:scale-95 transition-transform">
+                    Log out
+                </button>
+</div>
+</nav>
+</header>
+<!-- Main Content Canvas -->
+<main class="max-w-5xl mx-auto px-6 py-12 md:py-20">
+<!-- Header Text (The "Cinema" Authority) -->
+<div class="mb-12">
+<h1 class="text-5xl font-black tracking-tighter mb-2">Theater Dashboard</h1>
+<p class="font-['Inter'] uppercase tracking-widest text-[10px] text-primary">Your Private Cinema Network</p>
+</div>
+<!-- Section A & B: Room Management (Asymmetric Grid) -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+<!-- Section A: Create Room -->
+<div class="bg-surface-container-low p-8 rounded-xl flex flex-col gap-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">add_circle</span>
+<h2 class="font-['Inter'] tracking-wider uppercase text-xs font-bold text-on-surface">Create Room</h2>
+</div>
+<div class="flex flex-col gap-4">
+<input class="bg-surface-container-lowest border-none focus:ring-0 focus:border-b focus:border-primary px-4 py-3 text-sm font-['Inter'] transition-all placeholder:text-outline" placeholder="Room name" type="text"/>
+<button class="bg-primary text-on-primary font-['Inter'] tracking-wider uppercase text-xs font-bold py-4 rounded-lg hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/10">
+                        Create room
+                    </button>
+</div>
+</div>
+<!-- Section B: Join Room -->
+<div class="bg-surface-container-low p-8 rounded-xl flex flex-col gap-6 border border-outline-variant/15">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">login</span>
+<h2 class="font-['Inter'] tracking-wider uppercase text-xs font-bold text-on-surface">Join Room</h2>
+</div>
+<div class="flex flex-col gap-4">
+<input class="bg-surface-container-lowest border-none focus:ring-0 focus:border-b focus:border-primary px-4 py-3 text-sm font-['Inter'] transition-all placeholder:text-outline" placeholder="Enter room code" type="text"/>
+<button class="bg-primary text-on-primary font-['Inter'] tracking-wider uppercase text-xs font-bold py-4 rounded-lg hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/10">
+                        Join
+                    </button>
+</div>
+</div>
+</div>
+<!-- Section C: My Rooms (Table) -->
+<div class="bg-surface-container-low rounded-xl overflow-hidden">
+<div class="px-8 py-6 flex justify-between items-center bg-surface-container-high/50">
+<h3 class="font-['Inter'] tracking-wider uppercase text-xs font-bold text-on-surface">My Rooms</h3>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px] text-outline">Total active: 03</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="text-[10px] uppercase tracking-[0.2em] text-outline bg-surface-container-lowest/50">
+<th class="px-8 py-4 font-medium">Room Name</th>
+<th class="px-8 py-4 font-medium">Room Code</th>
+<th class="px-8 py-4 font-medium">Role</th>
+<th class="px-8 py-4 font-medium">Creation Date</th>
+<th class="px-8 py-4 font-medium text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-white/5">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container-high transition-colors group cursor-pointer">
+<td class="px-8 py-5">
+<div class="flex flex-col">
+<span class="text-sm font-bold text-on-surface group-hover:text-primary transition-colors">Friday Night Movie</span>
+<span class="text-[10px] text-outline uppercase tracking-widest">Inception (2010)</span>
+</div>
+</td>
+<td class="px-8 py-5">
+<span class="font-mono text-primary bg-primary-container/10 px-2 py-1 rounded text-xs">SW-4921-X</span>
+</td>
+<td class="px-8 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary-container text-on-secondary-container text-[10px] font-bold uppercase tracking-wider">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                                    Host
+                                </span>
+</td>
+<td class="px-8 py-5 text-sm text-outline">Oct 24, 2023</td>
+<td class="px-8 py-5 text-right">
+<button class="material-symbols-outlined text-outline hover:text-primary transition-colors">arrow_forward_ios</button>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container-high transition-colors group cursor-pointer">
+<td class="px-8 py-5">
+<div class="flex flex-col">
+<span class="text-sm font-bold text-on-surface group-hover:text-primary transition-colors">Anime Night</span>
+<span class="text-[10px] text-outline uppercase tracking-widest">Spirited Away</span>
+</div>
+</td>
+<td class="px-8 py-5">
+<span class="font-mono text-primary bg-primary-container/10 px-2 py-1 rounded text-xs">SW-1088-A</span>
+</td>
+<td class="px-8 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-highest text-on-surface-variant text-[10px] font-bold uppercase tracking-wider">
+                                    Viewer
+                                </span>
+</td>
+<td class="px-8 py-5 text-sm text-outline">Oct 22, 2023</td>
+<td class="px-8 py-5 text-right">
+<button class="material-symbols-outlined text-outline hover:text-primary transition-colors">arrow_forward_ios</button>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container-high transition-colors group cursor-pointer">
+<td class="px-8 py-5">
+<div class="flex flex-col">
+<span class="text-sm font-bold text-on-surface group-hover:text-primary transition-colors">Documentary Session</span>
+<span class="text-[10px] text-outline uppercase tracking-widest">The Cosmos</span>
+</div>
+</td>
+<td class="px-8 py-5">
+<span class="font-mono text-primary bg-primary-container/10 px-2 py-1 rounded text-xs">SW-8821-M</span>
+</td>
+<td class="px-8 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary-container text-on-secondary-container text-[10px] font-bold uppercase tracking-wider">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                                    Host
+                                </span>
+</td>
+<td class="px-8 py-5 text-sm text-outline">Oct 15, 2023</td>
+<td class="px-8 py-5 text-right">
+<button class="material-symbols-outlined text-outline hover:text-primary transition-colors">arrow_forward_ios</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Empty State (Hidden by default, shown if list is empty) -->
+<div class="hidden flex-col items-center justify-center py-24 text-center">
+<span class="material-symbols-outlined text-outline-variant text-6xl mb-4">movie_filter</span>
+<p class="text-lg font-bold text-outline-variant italic">No rooms yet</p>
+<p class="text-xs uppercase tracking-widest text-outline mt-2">Start by creating or joining a theater</p>
+</div>
+</div>
+<!-- Subtle Background Accent (Depth) -->
+<div class="fixed top-0 right-0 w-1/2 h-full -z-10 pointer-events-none opacity-20">
+<div class="absolute inset-0 bg-gradient-to-l from-primary/10 to-transparent blur-3xl"></div>
+</div>
+</main>
+<!-- BottomNavBar (Player Style) -->
+<footer class="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-4 max-w-5xl mx-auto rounded-xl mx-6 mb-6 bg-[#2a2a2a]/60 backdrop-blur-xl shadow-[0_0_32px_rgba(0,0,0,0.4)]">
+<div class="flex items-center gap-8 justify-center w-full">
+<button class="flex flex-col items-center gap-1 text-blue-400 cursor-pointer hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Play</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-white cursor-pointer hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">schedule</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Time</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-white cursor-pointer hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">linear_scale</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Seek</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-white cursor-pointer hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">volume_up</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Volume</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-white cursor-pointer hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">fullscreen</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Fullscreen</span>
+</button>
+</div>
+</footer>
+</body></html>
