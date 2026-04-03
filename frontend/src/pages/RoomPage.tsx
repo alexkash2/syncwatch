@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { ChatPanel } from '../components/room/ChatPanel';
 import { ParticipantList } from '../components/room/ParticipantList';
+import { FileSelector, type FileStatus } from '../components/room/FileSelector';
 import type { RoomDetail } from '../types/room';
 import type { ChatMessage, WsMessage, WsParticipant } from '../types/ws';
 
@@ -18,6 +19,9 @@ export function RoomPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [participants, setParticipants] = useState<WsParticipant[]>([]);
+  const [fileStatus, setFileStatus] = useState<FileStatus>('idle');
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [verifyResult, setVerifyResult] = useState<{ match: boolean; reason?: string } | null>(null);
 
   // Fetch room details + chat history via REST
   useEffect(() => {
@@ -66,6 +70,22 @@ export function RoomPage() {
             },
           ]);
           break;
+        case 'file_verify_response':
+          setVerifyResult({ match: msg.match, reason: msg.reason });
+          break;
+        case 'file_changed':
+          // Host changed file, reset our state
+          setFileStatus('idle');
+          setFileUrl(null);
+          setVerifyResult(null);
+          break;
+        case 'participant_ready':
+          setParticipants((prev) =>
+            prev.map((p) =>
+              p.user_id === msg.user_id ? { ...p, is_ready: msg.is_ready } : p
+            )
+          );
+          break;
         case 'error':
           if (msg.code === 'tab_replaced') {
             navigate('/');
@@ -80,6 +100,22 @@ export function RoomPage() {
     roomId: roomId || '',
     onMessage: handleWsMessage,
   });
+
+  const handleVerifyRequest = useCallback(
+    (hash: string, size: number, durationMs: number) => {
+      send('file_verify_request', { file_hash: hash, file_size: size, file_duration_ms: durationMs });
+    },
+    [send]
+  );
+
+  const handleFileReady = useCallback(
+    (url: string, _hash: string, _size: number, _durationMs: number) => {
+      setFileUrl(url);
+      setFileStatus('verified');
+      send('ready', { file_version: 0 });
+    },
+    [send]
+  );
 
   const handleSendChat = useCallback(
     (content: string): boolean => {
@@ -149,22 +185,23 @@ export function RoomPage() {
       <main className="flex flex-1 overflow-hidden relative">
         {/* Video area */}
         <section className="flex-1 md:flex-[3] flex flex-col">
-          <div className="flex-1 flex items-center justify-center bg-surface-container-lowest p-4 md:p-12">
-            <div className="text-center space-y-6">
-              <div className="w-20 h-20 mx-auto rounded-full bg-surface-container-high flex items-center justify-center border border-primary-container/20 text-4xl">
-                🎬
-              </div>
-              <h2 className="font-black text-2xl tracking-tight text-on-surface">
-                Select a video file to start
-              </h2>
-              <p className="text-on-surface-variant max-w-xs mx-auto">
-                Choose a local video file to sync playback with the room.
-              </p>
-              <button className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-br from-primary-container to-[#0053da] text-on-primary-container font-bold uppercase text-xs tracking-widest active:scale-95 transition-all cursor-pointer">
-                Choose Video File
-              </button>
+          {!fileUrl ? (
+            <FileSelector
+              onFileReady={handleFileReady}
+              onVerifyRequest={handleVerifyRequest}
+              verifyResult={verifyResult}
+              status={fileStatus}
+              setStatus={setFileStatus}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center bg-black">
+              <video
+                src={fileUrl}
+                className="w-full h-full"
+                controls={false}
+              />
             </div>
-          </div>
+          )}
 
           {/* Player controls placeholder */}
           <div className="h-20 md:h-24 bg-surface-container/60 backdrop-blur-2xl border-t border-outline-variant/20 flex flex-col justify-center px-4 md:px-12 shrink-0">

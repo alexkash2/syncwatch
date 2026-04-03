@@ -10,7 +10,7 @@ from app.models.room import Room
 from app.models.room_participant import RoomParticipant
 from app.models.user import User
 from app.services.chat_service import save_message
-from app.ws.manager import manager
+from app.ws.manager import RoomState, manager
 
 router = APIRouter()
 
@@ -158,7 +158,108 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     "created_at": msg.created_at.isoformat(),
                 })
 
-            # Other message types handled in Phase 4-5
+            elif msg_type == "file_verify_request":
+                file_hash = data.get("file_hash", "")
+                file_size = data.get("file_size", 0)
+                file_duration_ms = data.get("file_duration_ms", 0)
+
+                async with async_session() as db:
+                    ri = await _get_room_info(db, room_id)
+
+                if not ri or not ri["file_hash"]:
+                    # No reference file set yet — if host, this is the first file
+                    if user_id == host_id:
+                        async with async_session() as db:
+                            from app.services.room_service import update_file_info
+                            await update_file_info(
+                                db, uuid.UUID(room_id), uuid.UUID(user_id),
+                                file_hash, file_size, file_duration_ms,
+                                data.get("file_name", "unknown"),
+                            )
+                        await manager.send_to_user(room_id, user_id, {
+                            "type": "file_verify_response",
+                            "match": True,
+                            "file_version": (manager.room_states.get(room_id) or RoomState()).file_version,
+                        })
+                        # Broadcast file_changed to all others
+                        async with async_session() as db:
+                            updated_info = await _get_room_info(db, room_id)
+                        if updated_info:
+                            state = manager.room_states.get(room_id)
+                            if state:
+                                state.file_version = updated_info["file_version"]
+                                state.room_status = "waiting_ready"
+                            await manager.broadcast(room_id, {
+                                "type": "file_changed",
+                                "file_hash": updated_info["file_hash"],
+                                "file_size": updated_info["file_size"],
+                                "file_duration_ms": updated_info["file_duration_ms"],
+                                "file_name": updated_info["file_name"],
+                                "file_version": updated_info["file_version"],
+                            }, exclude_user=user_id)
+                    else:
+                        await manager.send_to_user(room_id, user_id, {
+                            "type": "file_verify_response",
+                            "match": False,
+                            "reason": "Host has not selected a file yet.",
+                        })
+                else:
+                    # Compare against reference
+                    match = (
+                        ri["file_hash"] == file_hash
+                        and ri["file_size"] == file_size
+                        and abs((ri["file_duration_ms"] or 0) - file_duration_ms) <= 1000
+                    )
+                    reason = None if match else "File does not match the host's file."
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "file_verify_response",
+                        "match": match,
+                        "reason": reason,
+                        "file_version": ri["file_version"],
+                    })
+
+            elif msg_type == "ready":
+                async with async_session() as db:
+                    result = await db.execute(
+                        select(RoomParticipant).where(
+                            RoomParticipant.room_id == uuid.UUID(room_id),
+                            RoomParticipant.user_id == uuid.UUID(user_id),
+                            RoomParticipant.left_at == None,
+                        )
+                    )
+                    p = result.scalar_one_or_none()
+                    if p:
+                        p.is_ready = True
+                        await db.commit()
+
+                await manager.broadcast(room_id, {
+                    "type": "participant_ready",
+                    "user_id": user_id,
+                    "is_ready": True,
+                    "file_version": data.get("file_version", 0),
+                })
+
+            elif msg_type == "not_ready":
+                async with async_session() as db:
+                    result = await db.execute(
+                        select(RoomParticipant).where(
+                            RoomParticipant.room_id == uuid.UUID(room_id),
+                            RoomParticipant.user_id == uuid.UUID(user_id),
+                            RoomParticipant.left_at == None,
+                        )
+                    )
+                    p = result.scalar_one_or_none()
+                    if p:
+                        p.is_ready = False
+                        await db.commit()
+
+                await manager.broadcast(room_id, {
+                    "type": "participant_ready",
+                    "user_id": user_id,
+                    "is_ready": False,
+                })
+
+            # Other message types handled in Phase 5
 
     except WebSocketDisconnect:
         pass
