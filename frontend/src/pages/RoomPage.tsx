@@ -53,13 +53,18 @@ export function RoomPage() {
   // Handle WS messages
   const handleWsMessage = useCallback(
     (msg: WsMessage) => {
+      // Update global seq for ALL message types (not just sync)
+      if (msg.seq !== undefined && msg.seq > lastSeqRef.current) {
+        lastSeqRef.current = msg.seq;
+      }
+
       switch (msg.type) {
         case 'room_state':
           setParticipants(msg.participants || []);
           if (msg.file_version !== undefined) {
             fileVersionRef.current = msg.file_version;
           }
-          // Apply initial playback state for late joiners
+          // Apply playback state for late joiners / reconnect
           if (msg.playback_state) {
             const video = videoRef.current;
             if (video) {
@@ -67,6 +72,8 @@ export function RoomPage() {
               video.currentTime = targetSec;
               if (msg.playback_state.is_playing) {
                 video.play().catch(() => {});
+              } else if (!video.paused) {
+                video.pause();
               }
             }
           }
@@ -225,9 +232,15 @@ export function RoomPage() {
 
   const handleLeave = async () => {
     if (!roomId) return;
+    clearInterval(graceTimerRef.current);
     await leaveRoom(roomId);
     navigate('/');
   };
+
+  // Cleanup grace timer on unmount
+  useEffect(() => {
+    return () => clearInterval(graceTimerRef.current);
+  }, []);
 
   if (loading) {
     return (

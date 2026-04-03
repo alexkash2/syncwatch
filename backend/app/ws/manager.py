@@ -66,6 +66,9 @@ class ConnectionManager:
         """Check if user was in disconnected state (grace period)."""
         return self.disconnected_users.pop((room_id, user_id), None)
 
+    def _has_grace_timers(self, room_id: str) -> bool:
+        return any(k[0] == room_id for k in self._grace_timers)
+
     async def disconnect(self, room_id: str, user_id: str, connection_id: str) -> bool:
         if room_id not in self.rooms:
             return False
@@ -78,20 +81,23 @@ class ConnectionManager:
         del self.rooms[room_id][user_id]
         if not self.rooms[room_id]:
             del self.rooms[room_id]
-            self.room_states.pop(room_id, None)
-            self.seq_counters.pop(room_id, None)
             self._stop_heartbeat(room_id)
+            # Only clean up state if no grace timers pending (someone may reconnect)
+            if not self._has_grace_timers(room_id):
+                self.room_states.pop(room_id, None)
+                self.seq_counters.pop(room_id, None)
         return True
 
     def start_grace_period(
-        self, room_id: str, user_id: str, is_host: bool, callback
+        self, room_id: str, user_id: str, is_host: bool, callback,
+        was_ready: bool = False,
     ):
         """Start a grace period timer. callback is called on timeout."""
         timeout = HOST_GRACE_PERIOD_S if is_host else PARTICIPANT_GRACE_PERIOD_S
 
-        # Save disconnected state
         self.disconnected_users[(room_id, user_id)] = {
             "is_host": is_host,
+            "was_ready": was_ready,
         }
 
         async def _timer():

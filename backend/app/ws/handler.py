@@ -111,14 +111,36 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     reconnect_data = manager.is_reconnecting(room_id, user_id)
     if reconnect_data:
         is_host_reconnect = reconnect_data.get("is_host", False)
+        was_ready = reconnect_data.get("was_ready", False)
+
         if is_host_reconnect:
-            # Host reconnected — restore room state
             state = manager.room_states.get(room_id)
             if state and state.room_status == "closing":
-                state.room_status = state._pre_closing_status or "paused"
-            await manager.broadcast(room_id, {
-                "type": "host_reconnected",
-            })
+                # Restore to paused (never playing — autopause happened)
+                restored = state._pre_closing_status or "paused"
+                if restored == "playing":
+                    restored = "paused"
+                state.room_status = restored
+            await manager.broadcast(room_id, {"type": "host_reconnected"})
+
+        # Restore ready state in DB if file_version matches
+        if was_ready:
+            state = manager.room_states.get(room_id)
+            current_fv = state.file_version if state else 0
+            room_fv = room_info.get("file_version", 0)
+            if current_fv == room_fv:
+                async with async_session() as db:
+                    result = await db.execute(
+                        select(RoomParticipant).where(
+                            RoomParticipant.room_id == uuid.UUID(room_id),
+                            RoomParticipant.user_id == uuid.UUID(user_id),
+                            RoomParticipant.left_at == None,
+                        )
+                    )
+                    p = result.scalar_one_or_none()
+                    if p:
+                        p.is_ready = True
+                        await db.commit()
 
     # Send room_state to connecting user
     state = manager.room_states.get(room_id)
@@ -358,6 +380,21 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     if correction:
                         await manager.send_to_user(room_id, user_id, correction)
 
+            elif msg_type == "reconnect":
+                # Client sends this right after open on reconnect
+                # last_seq and file_version are informational —
+                # we already sent room_state with canonical time
+                # If file_version mismatches, send updated sync_state
+                client_fv = data.get("file_version", -1)
+                state = manager.room_states.get(room_id)
+                if state and client_fv != state.file_version:
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "sync_state",
+                        "is_playing": state.is_playing,
+                        "current_time_ms": get_current_time_ms(state),
+                        "file_version": state.file_version,
+                    })
+
             elif msg_type == "playback_error":
                 # Just broadcast participant status so others can see
                 await manager.broadcast(room_id, {
@@ -372,31 +409,51 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     except Exception:
         pass
     finally:
+        # Check if user was ready before disconnect (for reconnect restore)
+        was_ready = False
+        async with async_session() as db:
+            result = await db.execute(
+                select(RoomParticipant.is_ready).where(
+                    RoomParticipant.room_id == uuid.UUID(room_id),
+                    RoomParticipant.user_id == uuid.UUID(user_id),
+                    RoomParticipant.left_at == None,
+                )
+            )
+            row = result.scalar_one_or_none()
+            if row is not None:
+                was_ready = row
+
         actually_removed = await manager.disconnect(room_id, user_id, connection_id)
         if actually_removed:
             is_host = (user_id == host_id)
 
             if is_host:
-                # Host disconnect: enter CLOSING state with grace period
                 state = manager.room_states.get(room_id)
                 if state and state.room_status != "closing":
+                    # Autopause FIRST (while status is still "playing")
+                    if state.is_playing:
+                        apply_pause(state, get_current_time_ms(state))
+                    # Then set closing
                     state._pre_closing_status = state.room_status
                     state.room_status = "closing"
-                    # Autopause
-                    if state.is_playing:
-                        from app.ws.sync import apply_pause, get_current_time_ms
-                        apply_pause(state, get_current_time_ms(state))
 
+                # Broadcast autopause sync_state so clients actually pause
+                if state:
+                    await manager.broadcast(room_id, {
+                        "type": "sync_state",
+                        "is_playing": False,
+                        "current_time_ms": state.current_time_ms,
+                        "file_version": state.file_version,
+                    })
+
+                from app.ws.manager import HOST_GRACE_PERIOD_S
                 await manager.broadcast(room_id, {
                     "type": "host_disconnected",
-                    "grace_period_ms": manager.HOST_GRACE_PERIOD_S * 1000
-                    if hasattr(manager, 'HOST_GRACE_PERIOD_S')
-                    else 30000,
+                    "grace_period_ms": HOST_GRACE_PERIOD_S * 1000,
                 })
 
                 async def _host_timeout():
                     await manager.close_room(room_id, "host_timeout")
-                    # Mark room inactive in DB
                     async with async_session() as db:
                         from app.models.room import Room as RoomModel
                         result = await db.execute(
@@ -407,9 +464,10 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                             r.is_active = False
                             await db.commit()
 
-                manager.start_grace_period(room_id, user_id, True, _host_timeout)
+                manager.start_grace_period(
+                    room_id, user_id, True, _host_timeout, was_ready=was_ready
+                )
             else:
-                # Participant disconnect: grace period for reconnect
                 await manager.broadcast(room_id, {
                     "type": "user_left",
                     "user_id": user_id,
@@ -418,7 +476,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 })
 
                 async def _participant_timeout():
-                    # Remove participant from DB
                     async with async_session() as db:
                         result = await db.execute(
                             select(RoomParticipant).where(
@@ -432,5 +489,11 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                             from sqlalchemy import func as sa_func
                             p.left_at = sa_func.now()
                             await db.commit()
+                    # Clean up room state if no more grace timers
+                    if not manager._has_grace_timers(room_id) and room_id not in manager.rooms:
+                        manager.room_states.pop(room_id, None)
+                        manager.seq_counters.pop(room_id, None)
 
-                manager.start_grace_period(room_id, user_id, False, _participant_timeout)
+                manager.start_grace_period(
+                    room_id, user_id, False, _participant_timeout, was_ready=was_ready
+                )

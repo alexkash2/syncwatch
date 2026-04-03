@@ -24,6 +24,7 @@ export function useWebSocket({ roomId, onMessage, lastSeqRef, fileVersionRef }: 
 
     try {
       const { data } = await client.post('/auth/ws-ticket', { room_id: roomId });
+      if (intentionalClose.current) return; // Check again after async
       const ticket = data.ticket;
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
