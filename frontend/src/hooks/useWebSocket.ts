@@ -84,11 +84,19 @@ export function useWebSocket({ roomId, onMessage, lastSeqRef, fileVersionRef }: 
 
   useEffect(() => {
     intentionalClose.current = false;
+    hasConnectedBefore.current = false;
     connect();
     return () => {
       intentionalClose.current = true;
       clearTimeout(reconnectTimer.current);
-      wsRef.current?.close();
+      const ws = wsRef.current;
+      if (ws) {
+        // Only close if actually connected, avoid "closed before established" warning
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
+        wsRef.current = null;
+      }
     };
   }, [connect]);
 

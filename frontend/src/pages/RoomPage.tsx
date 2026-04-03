@@ -34,8 +34,12 @@ export function RoomPage() {
   // Fetch room details + chat history via REST
   useEffect(() => {
     if (!roomId) return;
-    Promise.all([getRoom(roomId), getChatHistory(roomId)])
-      .then(([data, history]) => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const data = await getRoom(roomId);
+        if (cancelled) return;
         setRoom(data);
         setParticipants(
           data.participants.map((p) => ({
@@ -44,10 +48,29 @@ export function RoomPage() {
             is_ready: p.is_ready,
           }))
         );
-        setMessages(history.messages);
-      })
-      .catch(() => navigate('/'))
-      .finally(() => setLoading(false));
+        // Chat history is optional — don't fail the whole page
+        try {
+          const history = await getChatHistory(roomId);
+          if (!cancelled) setMessages(history.messages);
+        } catch {
+          // Chat history failed, non-critical
+        }
+      } catch (err: any) {
+        console.error('Failed to load room:', err?.response?.status, err?.response?.data);
+        if (!cancelled) {
+          // Only redirect on 404/403, not on transient errors
+          const status = err?.response?.status;
+          if (status === 404 || status === 403) {
+            navigate('/');
+          }
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
   }, [roomId, navigate]);
 
   // Handle WS messages
