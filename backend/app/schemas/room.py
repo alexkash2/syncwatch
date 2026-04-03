@@ -9,7 +9,7 @@ class RoomCreate(BaseModel):
 
 
 class JoinRoomRequest(BaseModel):
-    room_code: str = Field(min_length=1, max_length=8)
+    room_code: str = Field(min_length=8, max_length=8, pattern=r"^[A-Z0-9]{8}$")
 
 
 class ParticipantResponse(BaseModel):
@@ -45,7 +45,7 @@ class RoomListResponse(BaseModel):
 
 
 class FileInfoRequest(BaseModel):
-    file_hash: str
-    file_size: int
-    file_duration_ms: int
-    file_name: str = Field(max_length=500)
+    file_hash: str = Field(min_length=64, max_length=128)
+    file_size: int = Field(gt=0)
+    file_duration_ms: int = Field(gt=0)
+    file_name: str = Field(min_length=1, max_length=500)

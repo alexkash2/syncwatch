@@ -1,7 +1,7 @@
 import secrets
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -32,7 +32,6 @@ async def create_room(db: AsyncSession, name: str, host_id: uuid.UUID) -> Room:
                 raise ConflictError("Failed to generate unique room code, try again")
             continue
 
-    # Add host as participant
     participant = RoomParticipant(room_id=room.id, user_id=host_id)
     db.add(participant)
     await db.commit()
@@ -40,22 +39,29 @@ async def create_room(db: AsyncSession, name: str, host_id: uuid.UUID) -> Room:
     return room
 
 
-async def get_room(db: AsyncSession, room_id: uuid.UUID) -> Room:
+async def get_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> Room:
     result = await db.execute(
         select(Room)
-        .options(selectinload(Room.participants))
+        .options(selectinload(Room.participants).selectinload(RoomParticipant.user))
         .where(Room.id == room_id, Room.is_active == True)
     )
     room = result.scalar_one_or_none()
     if room is None:
         raise NotFoundError("Room not found")
+
+    # Check that user is an active participant
+    is_participant = any(
+        p.user_id == user_id and p.left_at is None for p in room.participants
+    )
+    if not is_participant:
+        raise ForbiddenError("You are not a participant of this room")
+
     return room
 
 
 async def get_user_rooms(
     db: AsyncSession, user_id: uuid.UUID, page: int = 1, size: int = 20
 ) -> tuple[list[Room], int]:
-    # Rooms where user is host or active participant
     subquery = (
         select(RoomParticipant.room_id)
         .where(RoomParticipant.user_id == user_id, RoomParticipant.left_at == None)
@@ -73,23 +79,40 @@ async def get_user_rooms(
 
 
 async def join_room(db: AsyncSession, room_code: str, user_id: uuid.UUID) -> Room:
+    # Lock the room row to prevent race conditions on max_participants
     result = await db.execute(
         select(Room)
-        .options(selectinload(Room.participants))
         .where(Room.room_code == room_code.upper(), Room.is_active == True)
+        .with_for_update()
     )
     room = result.scalar_one_or_none()
     if room is None:
         raise NotFoundError("Room not found")
 
-    # Check if already a participant
-    active_participants = [p for p in room.participants if p.left_at is None]
-    for p in active_participants:
-        if p.user_id == user_id:
-            return room  # Already joined
+    # Check if already an active participant
+    existing = await db.execute(
+        select(RoomParticipant).where(
+            RoomParticipant.room_id == room.id,
+            RoomParticipant.user_id == user_id,
+            RoomParticipant.left_at == None,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return room  # Already joined
 
-    # Check max_participants
-    if len(active_participants) >= room.max_participants:
+    # Atomic count of active participants
+    count_result = await db.execute(
+        select(func.count()).select_from(
+            select(RoomParticipant)
+            .where(
+                RoomParticipant.room_id == room.id,
+                RoomParticipant.left_at == None,
+            )
+            .subquery()
+        )
+    )
+    active_count = count_result.scalar_one()
+    if active_count >= room.max_participants:
         raise BadRequestError("Room is full")
 
     participant = RoomParticipant(room_id=room.id, user_id=user_id)
@@ -98,7 +121,8 @@ async def join_room(db: AsyncSession, room_code: str, user_id: uuid.UUID) -> Roo
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        return room  # Race condition: already joined
+        # Partial unique index conflict = already joined (race condition)
+        return room
     await db.refresh(room)
     return room
 
@@ -117,7 +141,6 @@ async def leave_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -
 
     participant.left_at = func.now()
 
-    # If host leaves, close the room
     room_result = await db.execute(select(Room).where(Room.id == room_id))
     room = room_result.scalar_one_or_none()
     if room and room.host_id == user_id:
@@ -162,7 +185,6 @@ async def update_file_info(
     room.file_name = file_name
     room.file_version += 1
 
-    # Reset is_ready for all participants
     for p in room.participants:
         if p.left_at is None:
             p.is_ready = False

@@ -47,24 +47,28 @@ async def get_room(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    room = await room_service.get_room(db, room_id)
-    participants = []
-    for p in room.participants:
-        if p.left_at is None:
-            user = await p.awaitable_attrs.user
-            participants.append(
-                ParticipantResponse(
-                    user_id=p.user_id,
-                    username=user.username,
-                    is_ready=p.is_ready,
-                    joined_at=p.joined_at,
-                )
-            )
-    host_user = await room.awaitable_attrs.host
+    room = await room_service.get_room(db, room_id, current_user.id)
+    participants = [
+        ParticipantResponse(
+            user_id=p.user_id,
+            username=p.user.username,
+            is_ready=p.is_ready,
+            joined_at=p.joined_at,
+        )
+        for p in room.participants
+        if p.left_at is None
+    ]
     return RoomDetailResponse(
-        **{k: v for k, v in room.__dict__.items() if not k.startswith("_")},
+        id=room.id,
+        name=room.name,
+        room_code=room.room_code,
+        host_id=room.host_id,
+        is_active=room.is_active,
+        max_participants=room.max_participants,
+        file_version=room.file_version,
+        created_at=room.created_at,
         participants=participants,
-        host_username=host_user.username,
+        host_username=room.host.username,
     )
 
 

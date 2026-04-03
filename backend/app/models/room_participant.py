@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, UniqueConstraint, func
+from sqlalchemy import Boolean, ForeignKey, Index, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -11,9 +11,11 @@ from app.models.base import Base
 class RoomParticipant(Base):
     __tablename__ = "room_participants"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "ix_active_participant",
             "room_id", "user_id",
-            name="uq_active_participant",
+            unique=True,
+            postgresql_where="left_at IS NULL",
         ),
     )
 
