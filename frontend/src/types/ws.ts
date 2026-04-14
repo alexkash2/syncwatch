@@ -3,6 +3,7 @@ export interface WsMessage {
   seq?: number;
   server_time?: number;
   file_version?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
 
@@ -28,7 +29,7 @@ export interface RoomStateMessage {
     current_time_ms: number;
     playback_rate: number;
   };
-  file_info: Record<string, any>;
+  file_info: Record<string, string | number | null>;
   file_version: number;
   room_status: string;
 }

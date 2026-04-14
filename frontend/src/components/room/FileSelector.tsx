@@ -4,7 +4,7 @@ import { computeFileHash, getVideoDurationMs } from '../../utils/fileHash';
 export type FileStatus = 'idle' | 'hashing' | 'verifying' | 'verified' | 'mismatch' | 'error';
 
 interface FileSelectorProps {
-  onFileVerified: (fileUrl: string, hash: string, size: number, durationMs: number) => void;
+  onFileVerified: (fileUrl: string) => void;
   onVerifyRequest: (hash: string, size: number, durationMs: number, fileName: string) => void;
   verifyResult: { match: boolean; reason?: string; file_version?: number } | null;
   isHost: boolean;
@@ -56,18 +56,17 @@ export function FileSelector({ onFileVerified, onVerifyRequest, verifyResult, is
     if (inputRef.current) inputRef.current.value = '';
   };
 
-  // Handle verify result in useEffect (not during render)
+  // Handle verify result — setState driven by prop change, safe pattern
   useEffect(() => {
     if (!verifyResult || status !== 'verifying') return;
 
     if (verifyResult.match && pendingFile.current) {
-      const { url, hash, size, durationMs } = pendingFile.current;
-      setStatus('verified');
-      onFileVerified(url, hash, size, durationMs);
+      const { url } = pendingFile.current;
+      setStatus('verified'); // eslint-disable-line react-hooks/set-state-in-effect
+      onFileVerified(url);
       pendingFile.current = null;
     } else if (!verifyResult.match) {
       setStatus('mismatch');
-      // Revoke URL if we had one pending
       if (pendingFile.current) {
         URL.revokeObjectURL(pendingFile.current.url);
         pendingFile.current = null;

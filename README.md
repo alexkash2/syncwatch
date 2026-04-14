@@ -30,7 +30,7 @@ docker run -d --name syncwatch-pg \
 # Backend
 cd backend
 pip install -r requirements.txt
-alembic upgrade head
+PYTHONPATH=. alembic upgrade head
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 # Frontend (in another terminal)
@@ -72,7 +72,24 @@ frontend/         React SPA
     contexts/     AuthContext
     api/          Axios client with JWT interceptor
     utils/        File hashing (partial SHA-256)
+    types/        TypeScript type definitions
 ```
+
+## Player Controls
+
+- **Play/Pause**: click button, click video area, or press `Space`
+- **Seek ±5s**: `←` / `→` arrow keys, or ⏪/⏩ buttons
+- **Fullscreen**: `F` key or ⛶ button
+- **Volume**: slider (independent per user, not synced)
+
+## Key Technical Decisions
+
+- **One backend instance** — all realtime state in-memory (ConnectionManager). No Redis/horizontal scaling in MVP.
+- **One tab per user per room** — duplicate tabs get `tab_replaced` error.
+- **WS auth via one-time ticket** — not JWT in query string. Ticket issued via REST, 30s TTL.
+- **All protocol times in integer milliseconds** — no float ambiguity.
+- **Host-only playback control** — only the room creator can play/pause/seek.
+- **Heartbeat every 3s** — drift < 300ms ignored, 300ms–2s nudge, >2s hard seek.
 
 ## Implementation Status
 
@@ -83,5 +100,18 @@ frontend/         React SPA
 - [x] Phase 5: Video player + playback sync
 - [x] Phase 6: Reconnect + grace periods
 - [ ] Phase 7: Polish + Docker finalization
+
+## Tests
+
+```bash
+cd backend
+PYTHONPATH=. python -m pytest -q   # 51 tests
+```
+
+```bash
+cd frontend
+npx tsc --noEmit    # TypeScript check
+npx eslint .        # Lint check
+```
 
 See [PLAN.md](PLAN.md) for the full implementation plan.

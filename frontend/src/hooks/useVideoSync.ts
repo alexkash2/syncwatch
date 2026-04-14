@@ -3,12 +3,11 @@ import type { WsMessage } from '../types/ws';
 
 interface UseVideoSyncOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
-  send: (type: string, payload?: Record<string, any>) => boolean;
+  send: (type: string, payload?: Record<string, unknown>) => boolean;
   fileVersion: number;
-  lastSeq: React.MutableRefObject<number>;
 }
 
-export function useVideoSync({ videoRef, send, fileVersion, lastSeq }: UseVideoSyncOptions) {
+export function useVideoSync({ videoRef, send, fileVersion }: UseVideoSyncOptions) {
   const nudgeTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const handleSyncMessage = useCallback(
@@ -16,11 +15,7 @@ export function useVideoSync({ videoRef, send, fileVersion, lastSeq }: UseVideoS
       const video = videoRef.current;
       if (!video) return;
 
-      // Seq ordering: skip stale messages
-      if (msg.seq !== undefined) {
-        if (msg.seq <= lastSeq.current) return;
-        lastSeq.current = msg.seq;
-      }
+      // Seq is already checked and updated by handleWsMessage in RoomPage — no duplicate check here.
 
       // file_version check for sync messages
       if (msg.file_version !== undefined && msg.file_version !== fileVersion) return;
@@ -79,7 +74,7 @@ export function useVideoSync({ videoRef, send, fileVersion, lastSeq }: UseVideoS
         }
       }
     },
-    [videoRef, send, fileVersion, lastSeq]
+    [videoRef, send, fileVersion]
   );
 
   useEffect(() => {

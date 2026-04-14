@@ -32,7 +32,7 @@ export async function leaveRoom(roomId: string): Promise<void> {
 }
 
 export async function getChatHistory(roomId: string, cursor?: string): Promise<ChatHistoryResponse> {
-  const params: Record<string, any> = { limit: 50 };
+  const params: Record<string, string | number> = { limit: 50 };
   if (cursor) params.cursor = cursor;
   const res = await client.get<ChatHistoryResponse>(`/rooms/${roomId}/messages`, { params });
   return res.data;

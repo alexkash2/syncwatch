@@ -14,3 +14,15 @@
 - Mobile responsive layout for all pages.
 - .gitattributes: enforce LF line endings.
 - Design assets from Stitch (redesign variant, adapted to match plan).
+
+## 2026-04-08
+- Fix: WebSocket double-connect in React StrictMode (mountId generation counter prevents stale connections from `tab_replaced` loop).
+- Fix: video sync messages (`sync_state`, `sync_check`) were silently dropped due to double seq check in `handleWsMessage` + `useVideoSync`.
+- Fix: `video.play()` blocked by browser autoplay policy — now called synchronously on user gesture (host click), not after WS round-trip.
+- Fix: PlaybackControls timer stuck at 00:00 — effect didn't re-run when video element appeared (added `videoReady` prop).
+- Feature: skip ±5s buttons (⏪/⏩) next to play/pause.
+- Feature: click video area to toggle play/pause (host only).
+- Feature: keyboard shortcuts — Space (play/pause), ←/→ (seek ±5s), F (fullscreen).
+- Feature: fullscreen button (⛶) for the video section.
+- Cleanup: ESLint errors fixed (no-explicit-any, unused vars, self-reference). 0 errors, 0 warnings.
+- Docs: README updated with controls, run instructions, project structure.

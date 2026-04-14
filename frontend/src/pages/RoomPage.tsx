@@ -55,11 +55,11 @@ export function RoomPage() {
         } catch {
           // Chat history failed, non-critical
         }
-      } catch (err: any) {
-        console.error('Failed to load room:', err?.response?.status, err?.response?.data);
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { status?: number; data?: unknown } };
+        console.error('Failed to load room:', axiosErr.response?.status, axiosErr.response?.data);
         if (!cancelled) {
-          // Only redirect on 404/403, not on transient errors
-          const status = err?.response?.status;
+          const status = axiosErr.response?.status;
           if (status === 404 || status === 403) {
             navigate('/');
           }
@@ -197,7 +197,6 @@ export function RoomPage() {
     videoRef,
     send,
     fileVersion: fileVersionRef.current,
-    lastSeq: lastSeqRef,
   });
 
   const syncMessageRef = useRef(handleSyncMessage);
@@ -213,7 +212,7 @@ export function RoomPage() {
   );
 
   const handleFileVerified = useCallback(
-    (url: string, _hash: string, _size: number, _durationMs: number) => {
+    (url: string) => {
       setFileUrl(url);
       // Don't send ready yet — wait for video canplay event
     },
@@ -230,6 +229,20 @@ export function RoomPage() {
     },
     [send]
   );
+
+  const handleVideoClickToggle = useCallback(() => {
+    if (room?.host_id !== user?.id) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const timeMs = Math.round(video.currentTime * 1000);
+    if (video.paused) {
+      video.play().catch(() => {});
+      send('play', { current_time_ms: timeMs, file_version: fileVersionRef.current });
+    } else {
+      video.pause();
+      send('pause', { current_time_ms: timeMs, file_version: fileVersionRef.current });
+    }
+  }, [room?.host_id, user?.id, send]);
 
   const handlePlay = useCallback(
     (timeMs: number) => send('play', { current_time_ms: timeMs, file_version: fileVersionRef.current }),
@@ -345,6 +358,7 @@ export function RoomPage() {
               src={fileUrl}
               onCanPlay={handleVideoCanPlay}
               onError={handleVideoError}
+              onClickToggle={handleVideoClickToggle}
             />
           )}
 
@@ -354,6 +368,7 @@ export function RoomPage() {
             onPlay={handlePlay}
             onPause={handlePause}
             onSeek={handleSeek}
+            videoReady={!!fileUrl}
           />
         </section>
 
@@ -365,7 +380,7 @@ export function RoomPage() {
           />
         )}
 
-        {/* Side panel: overlay on mobile, static on desktop */}
+        {/* Side panel: overlay on mobile, static on desktop, hidden in theater mode */}
         <aside className={`
           fixed right-0 top-14 bottom-0 w-80 z-50 transition-transform duration-300
           md:static md:top-auto md:bottom-auto md:z-auto md:translate-x-0

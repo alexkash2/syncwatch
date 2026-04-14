@@ -39,3 +39,6 @@ backend/.pytest_cache/
 
 # Claude
 .claude/
+
+# Playwright MCP logs
+.playwright-mcp/

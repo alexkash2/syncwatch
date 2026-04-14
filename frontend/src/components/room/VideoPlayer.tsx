@@ -4,10 +4,11 @@ interface VideoPlayerProps {
   src: string;
   onCanPlay: () => void;
   onError: (errorCode: string) => void;
+  onClickToggle?: () => void;
 }
 
 export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
-  ({ src, onCanPlay, onError }, ref) => {
+  ({ src, onCanPlay, onError, onClickToggle }, ref) => {
     const handleError = () => {
       const video = (ref as React.RefObject<HTMLVideoElement>)?.current;
       const mediaError = video?.error;
@@ -19,7 +20,10 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
     };
 
     return (
-      <div className="flex-1 flex items-center justify-center bg-black relative">
+      <div
+        className="flex-1 flex items-center justify-center bg-black relative cursor-pointer"
+        onClick={onClickToggle}
+      >
         <video
           ref={ref}
           src={src}

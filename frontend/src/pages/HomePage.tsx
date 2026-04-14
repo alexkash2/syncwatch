@@ -35,8 +35,8 @@ export function HomePage() {
     try {
       const room = await createRoom(roomName.trim());
       navigate(`/room/${room.id}`);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to create room');
+    } catch (err: unknown) {
+      setError((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Failed to create room');
     } finally {
       setLoading(false);
     }
@@ -50,8 +50,8 @@ export function HomePage() {
     try {
       const room = await joinRoom(roomCode.trim());
       navigate(`/room/${room.id}`);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to join room');
+    } catch (err: unknown) {
+      setError((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Failed to join room');
     } finally {
       setLoading(false);
     }
