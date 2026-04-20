@@ -471,6 +471,9 @@ export function RoomPage() {
           roomCode={room.room_code}
           connectionState={connectionState}
           isHost={Boolean(isHost)}
+          roomStatus={roomStatus}
+          readyParticipants={readyCount}
+          totalParticipants={participants.length}
           sidebarOpen={sidebarOpen}
           onLeave={handleLeave}
           onToggleSidebar={() => setSidebarOpen((current) => !current)}

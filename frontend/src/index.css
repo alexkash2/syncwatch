@@ -155,6 +155,31 @@ html[data-motion="reduced"] *::after {
   }
 }
 
+@keyframes ui-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ui-dot-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+
+  50% {
+    transform: scale(1.18);
+    filter: brightness(1.25);
+  }
+}
+
 .ui-toast-enter {
   animation: ui-toast-in 0.22s ease-out;
 }
@@ -165,6 +190,14 @@ html[data-motion="reduced"] *::after {
 
 .ui-dialog-enter {
   animation: ui-dialog-in 0.22s ease-out;
+}
+
+.ui-fade-up {
+  animation: ui-fade-up 0.32s ease-out both;
+}
+
+.ui-dot-pulse {
+  animation: ui-dot-pulse 2.2s ease-in-out infinite;
 }
 
 .media-slider {

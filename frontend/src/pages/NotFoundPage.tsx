@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
+import { BrandIllustration } from '../components/brand/BrandIllustration';
 import { Badge } from '../components/ui/Badge';
 import { buttonStyles } from '../components/ui/buttonStyles';
 import { ArrowUpRightIcon, BrandMarkIcon } from '../components/ui/icons';
@@ -56,6 +57,7 @@ export function NotFoundPage() {
             </div>
 
             <div className="grid gap-4">
+              <BrandIllustration variant="drift" />
               <RouteHint
                 title="Return to dashboard"
                 text="Your room list, create flow and join form are all available from the home screen."

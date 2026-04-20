@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { createRoom, deleteRoom, joinRoom, listRooms } from '../api/rooms';
+import { BrandIllustration } from '../components/brand/BrandIllustration';
 import { Layout } from '../components/layout/Layout';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -452,6 +453,7 @@ export function HomePage() {
           </div>
         ) : rooms.length === 0 ? (
           <Panel variant="dashed" padding="lg" className="rounded-[1.9rem] text-center">
+            <BrandIllustration variant="launch" compact className="mx-auto mb-6 max-w-3xl text-left" />
             <h3 className="text-2xl font-black tracking-tight text-on-surface">No rooms yet</h3>
             <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-on-surface-variant">
               Start a hosted session or enter a shared code to see your recent room activity here.

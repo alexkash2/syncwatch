@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import type { ReactNode } from 'react';
+import { BrandIllustration, type BrandIllustrationVariant } from '../brand/BrandIllustration';
 import { Badge } from '../ui/Badge';
 import { BrandMarkIcon, ChatBubbleIcon, UsersIcon, VideoIcon } from '../ui/icons';
 import { Panel } from '../ui/Panel';
@@ -11,6 +12,7 @@ interface AuthShellProps {
   footerPrompt: string;
   footerLabel: string;
   footerHref: string;
+  illustrationVariant?: BrandIllustrationVariant;
   children: ReactNode;
 }
 
@@ -21,8 +23,10 @@ export function AuthShell({
   footerPrompt,
   footerLabel,
   footerHref,
+  illustrationVariant = 'sync',
   children,
 }: AuthShellProps) {
+  const accessMeta = getAccessMeta(illustrationVariant);
   const facts = [
     {
       title: 'Local video only',
@@ -128,16 +132,18 @@ export function AuthShell({
               <div className="mb-6 flex items-center justify-between gap-3 rounded-[1.4rem] border border-outline-variant/12 bg-black/20 px-4 py-3 sm:px-5">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
-                    Session Access
+                    {accessMeta.eyebrow}
                   </p>
                   <p className="mt-1 text-xs text-on-surface-variant sm:text-sm">
-                    Sign in and jump straight into your synced rooms.
+                    {accessMeta.description}
                   </p>
                 </div>
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-primary-container/22 bg-primary-container/10 text-primary">
                   <BrandMarkIcon size={18} />
                 </div>
               </div>
+
+              <BrandIllustration variant={illustrationVariant} compact className="mb-6" />
 
               {children}
             </div>
@@ -146,6 +152,31 @@ export function AuthShell({
       </div>
     </div>
   );
+}
+
+function getAccessMeta(illustrationVariant: BrandIllustrationVariant) {
+  switch (illustrationVariant) {
+    case 'welcome':
+      return {
+        eyebrow: 'Return Access',
+        description: 'Sign in, reopen recent rooms and keep the last stable session context.',
+      };
+    case 'launch':
+      return {
+        eyebrow: 'Room Launch',
+        description: 'Create your account, open the first room and invite the group in one flow.',
+      };
+    case 'drift':
+      return {
+        eyebrow: 'Recovery Access',
+        description: 'Get back onto a valid route before reopening your synced sessions.',
+      };
+    default:
+      return {
+        eyebrow: 'Session Access',
+        description: 'Sign in and jump straight into your synced rooms.',
+      };
+  }
 }
 
 function ShellChip({ label }: { label: string }) {

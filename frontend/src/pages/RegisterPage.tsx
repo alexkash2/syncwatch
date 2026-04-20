@@ -60,6 +60,7 @@ export function RegisterPage() {
       footerPrompt="Already registered?"
       footerLabel="Log in"
       footerHref="/login"
+      illustrationVariant="launch"
     >
       <div className="mb-8">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.28em] text-primary">
