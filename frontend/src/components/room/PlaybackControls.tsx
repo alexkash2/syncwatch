@@ -24,7 +24,14 @@ export function PlaybackControls({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.7);
+  const [volume, setVolume] = useState<number>(() => {
+    // Persist across rooms so the user doesn't have to re-set volume each
+    // time they enter a room. localStorage is the right place: it's a
+    // per-device UI preference, not tied to server state.
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem('sw.volume') : null;
+    const v = raw !== null ? parseFloat(raw) : NaN;
+    return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 0.7;
+  });
   const [isSeeking, setIsSeeking] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -59,6 +66,11 @@ export function PlaybackControls({
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = volume;
+    try {
+      window.localStorage.setItem('sw.volume', String(volume));
+    } catch {
+      // localStorage can throw (private mode quota); volume just won't persist.
+    }
   }, [volume, videoRef, videoReady]);
 
   const togglePlay = useCallback(() => {

@@ -42,7 +42,13 @@ async def create_room(db: AsyncSession, name: str, host_id: uuid.UUID) -> Room:
 async def get_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> Room:
     result = await db.execute(
         select(Room)
-        .options(selectinload(Room.participants).selectinload(RoomParticipant.user))
+        # Eager-load `host` too: the API response reads `room.host.username`,
+        # and async SQLAlchemy + asyncpg can't do a lazy load outside the
+        # greenlet — it would raise MissingGreenlet at response time.
+        .options(
+            selectinload(Room.participants).selectinload(RoomParticipant.user),
+            selectinload(Room.host),
+        )
         .where(Room.id == room_id, Room.is_active == True)
     )
     room = result.scalar_one_or_none()

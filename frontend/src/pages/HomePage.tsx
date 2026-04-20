@@ -18,16 +18,24 @@ export function HomePage() {
     (location.state as { flash?: string } | null)?.flash ?? null
   );
 
-  // Clear the flash out of router state so it doesn't replay on refresh/back.
+  // Clear the flash from router state so it doesn't replay on back/forward.
+  // Use react-router's own navigate(..., { replace, state: null }) instead of
+  // raw history.replaceState — the latter clobbers the internal `usr` key
+  // router 7 uses to track state and breaks subsequent navigation state.
   useEffect(() => {
     if (location.state && (location.state as { flash?: string }).flash) {
-      window.history.replaceState({}, '');
+      navigate(location.pathname + location.search, {
+        replace: true,
+        state: null,
+      });
     }
-    if (flash) {
-      const t = setTimeout(() => setFlash(null), 6000);
-      return () => clearTimeout(t);
-    }
-  }, [flash, location.state]);
+  }, [location.state, location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 6000);
+    return () => clearTimeout(t);
+  }, [flash]);
 
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [roomsLoadError, setRoomsLoadError] = useState(false);

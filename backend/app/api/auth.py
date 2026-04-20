@@ -92,6 +92,13 @@ async def ws_ticket(
 ):
     if not ws_ticket_limiter.check(f"user:{current_user.id}"):
         _raise_rate_limited()
+
+    # User is actively coming back — cancel any pending grace timer so they
+    # don't get kicked out between issuing this ticket and the WS handshake.
+    # (The WS connect path also cancels the timer, but that's 1+ RTT later.)
+    from app.ws.manager import manager
+    manager._cancel_grace_timer(str(body.room_id), str(current_user.id))
+    manager.disconnected_users.pop((str(body.room_id), str(current_user.id)), None)
     # Verify room exists and is active
     room_result = await db.execute(
         select(Room).where(Room.id == body.room_id, Room.is_active == True)

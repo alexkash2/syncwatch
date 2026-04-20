@@ -68,10 +68,11 @@ async def login_user(db: AsyncSession, email: str, password: str) -> TokenRespon
         # the same time as "wrong password" — stops timing-based enumeration.
         verify_password(password, _DUMMY_BCRYPT_HASH)
         raise BadRequestError("Invalid email or password")
-    if not verify_password(password, user.password_hash):
+    # Reject disabled accounts *silently* — returning a distinct "Account is
+    # disabled" message would confirm the account exists, defeating the
+    # no-enumeration stance of the unknown-user branch above.
+    if not user.is_active or not verify_password(password, user.password_hash):
         raise BadRequestError("Invalid email or password")
-    if not user.is_active:
-        raise BadRequestError("Account is disabled")
 
     return TokenResponse(
         access_token=create_access_token(str(user.id)),
@@ -84,12 +85,9 @@ async def refresh_tokens(db: AsyncSession, refresh_token: str) -> TokenResponse:
     if payload is None:
         raise BadRequestError("Invalid or expired refresh token")
 
-    # Single-use rotation: reject replay of a previously-used refresh token
-    # before we issue a new pair. Old tokens without a jti (from pre-rotation
-    # builds) are treated as invalid — forces the client to log in again.
     jti = payload.get("jti")
     exp = payload.get("exp")
-    if not jti or not exp or not mark_refresh_used(jti, int(exp)):
+    if not jti or not exp:
         raise BadRequestError("Invalid or expired refresh token")
 
     user_id_str = payload.get("sub")
@@ -100,7 +98,13 @@ async def refresh_tokens(db: AsyncSession, refresh_token: str) -> TokenResponse:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
-        raise BadRequestError("User not found or inactive")
+        raise BadRequestError("Invalid or expired refresh token")
+
+    # Only burn the jti after we've verified signature, shape, and that the
+    # user is still valid. Burning it earlier would let a transient DB error
+    # throw away a still-good token and force re-login for no reason.
+    if not mark_refresh_used(jti, int(exp)):
+        raise BadRequestError("Invalid or expired refresh token")
 
     return TokenResponse(
         access_token=create_access_token(str(user.id)),

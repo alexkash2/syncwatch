@@ -1,11 +1,14 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+logger = logging.getLogger("syncwatch.ws")
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.rate_limit import RateLimiter
+from app.core.rate_limit import RateLimiter, register_limiter_instance
 from app.core.security import validate_ws_ticket
 from app.database import async_session
 from app.models.room import Room
@@ -21,9 +24,13 @@ MAX_CHAT_LENGTH = 2000
 
 # Per-user limits for WS message categories. The chat limit is deliberately
 # stricter (spam prevention); playback control can burst during scrubbing.
-_chat_limiter = RateLimiter(max_events=20, window_seconds=10)
-_control_limiter = RateLimiter(max_events=60, window_seconds=10)
-_msg_limiter = RateLimiter(max_events=200, window_seconds=10)
+# Registered so `reap_all()` and test teardown touch them too.
+_chat_limiter = register_limiter_instance(RateLimiter(max_events=20, window_seconds=10))
+_control_limiter = register_limiter_instance(RateLimiter(max_events=60, window_seconds=10))
+_msg_limiter = register_limiter_instance(RateLimiter(max_events=200, window_seconds=10))
+# A host can otherwise spam file_verify_request → file_changed broadcasts at
+# the global cap (~20 Hz). Keep changes rare.
+_verify_limiter = register_limiter_instance(RateLimiter(max_events=5, window_seconds=10))
 
 
 def _allowed_ws_origin(origin: str | None) -> bool:
@@ -273,6 +280,13 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 })
 
             elif msg_type == "file_verify_request":
+                if not _verify_limiter.check(f"verify:{user_id}"):
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "error",
+                        "code": "rate_limited",
+                        "message": "Too many file verify attempts; slow down.",
+                    })
+                    continue
                 file_hash = data.get("file_hash", "")
                 file_size = data.get("file_size", 0)
                 file_duration_ms = data.get("file_duration_ms", 0)
@@ -531,7 +545,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     except WebSocketDisconnect:
         pass
     except Exception:
-        pass
+        logger.exception(
+            "ws handler error (room=%s user=%s)", room_id, user_id
+        )
     finally:
         # Check if user was ready before disconnect (for reconnect restore)
         was_ready = False

@@ -26,11 +26,16 @@ export function useWebSocket({
   const reconnectAttempt = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onMessageRef = useRef(onMessage);
+  const onFatalRef = useRef(onFatalTicketError);
   const intentionalClose = useRef(false);
   const hasConnectedBefore = useRef(false);
   const mountIdRef = useRef(0);
   const connectRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  // Keep callbacks in refs so `connect`'s closure always sees the latest
+  // version without needing them in its dependency array — otherwise an
+  // inline callback (common in callers) would be captured stale.
   onMessageRef.current = onMessage;
+  onFatalRef.current = onFatalTicketError;
 
   // Store connect in a ref to allow self-referencing in onclose without lint issues
   const connect = useCallback(async () => {
@@ -101,7 +106,7 @@ export function useWebSocket({
       ) {
         intentionalClose.current = true;
         setIsReconnecting(false);
-        if (myMountId === mountIdRef.current) onFatalTicketError?.(status);
+        if (myMountId === mountIdRef.current) onFatalRef.current?.(status);
         return;
       }
       if (!intentionalClose.current && myMountId === mountIdRef.current) {

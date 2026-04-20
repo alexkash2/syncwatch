@@ -60,6 +60,14 @@ export function ChatPanel({
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | undefined>(undefined);
   const atBottomRef = useRef(true);
+  const sendErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Cancel any pending "send failed" auto-hide timer on unmount so we don't
+  // call setState on an unmounted component (React warns; more importantly,
+  // leaking timers across fast navigations is just sloppy).
+  useEffect(() => {
+    return () => clearTimeout(sendErrorTimerRef.current);
+  }, []);
 
   // Auto-scroll to bottom only for NEW incoming messages and only if the user
   // is already near the bottom (don't yank them around while they read history).
@@ -104,7 +112,8 @@ export function ChatPanel({
       setSendError(false);
     } else {
       setSendError(true);
-      setTimeout(() => setSendError(false), 3000);
+      clearTimeout(sendErrorTimerRef.current);
+      sendErrorTimerRef.current = setTimeout(() => setSendError(false), 3000);
     }
   };
 

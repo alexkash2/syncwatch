@@ -7,7 +7,6 @@ from app.core.dependencies import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.room import (
-    FileInfoRequest,
     JoinRoomRequest,
     ParticipantResponse,
     RoomCreate,
@@ -92,10 +91,14 @@ async def leave_room(
 ):
     was_host = await room_service.leave_room(db, room_id, current_user.id)
     # If the host leaves explicitly, tear down WS for everyone immediately
-    # instead of waiting for host-grace-period timeout.
+    # instead of waiting for host-grace-period timeout. Exclude the host from
+    # the broadcast — they're already navigating away; a "host left" flash to
+    # themselves is nonsense.
     if was_host:
         from app.ws.manager import manager
-        await manager.close_room(str(room_id), "host_left")
+        await manager.close_room(
+            str(room_id), "host_left", exclude_user=str(current_user.id)
+        )
     return {"ok": True}
 
 
@@ -107,23 +110,19 @@ async def delete_room(
 ):
     await room_service.delete_room(db, room_id, current_user.id)
     # Notify any active WS sessions so clients navigate out immediately.
+    # Exclude the deleter (they already got a HTTP 200; they don't need the
+    # "room was deleted" flash as well).
     from app.ws.manager import manager
-    await manager.close_room(str(room_id), "deleted")
+    await manager.close_room(
+        str(room_id), "deleted", exclude_user=str(current_user.id)
+    )
     return {"ok": True}
 
 
-@router.put("/{room_id}/file-info", response_model=RoomResponse)
-async def update_file_info(
-    room_id: uuid.UUID,
-    body: FileInfoRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    room = await room_service.update_file_info(
-        db, room_id, current_user.id,
-        body.file_hash, body.file_size, body.file_duration_ms, body.file_name,
-    )
-    return room
+# NOTE: `PUT /rooms/{id}/file-info` used to exist here but was removed.
+# Setting the reference file now goes through the `file_verify_request` WS
+# message, which also updates the in-memory `RoomState.verified_users` gate
+# in one place. Keeping two entry points risked drifting the gate state.
 
 
 @router.get("/{room_id}/messages", response_model=ChatHistoryResponse)

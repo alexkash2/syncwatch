@@ -178,7 +178,15 @@ class ConnectionManager:
         if task:
             task.cancel()
 
-    async def close_room(self, room_id: str, reason: str):
+    async def close_room(
+        self, room_id: str, reason: str, exclude_user: str | None = None
+    ):
+        """Close a room and broadcast room_closed to all members.
+
+        `exclude_user` skips one user in the broadcast — used when the host
+        initiated the close themselves (they don't need a flash telling them
+        "the host left"; they're mid-navigation).
+        """
         self._stop_heartbeat(room_id)
         # Cancel all grace timers for this room. If close_room is itself
         # invoked from inside a grace-timer callback, skip that task to
@@ -194,7 +202,11 @@ class ConnectionManager:
                 task.cancel()
             self.disconnected_users.pop(k, None)
 
-        await self.broadcast(room_id, {"type": "room_closed", "reason": reason})
+        await self.broadcast(
+            room_id,
+            {"type": "room_closed", "reason": reason},
+            exclude_user=exclude_user,
+        )
         connections = self.rooms.pop(room_id, {})
         for uid, (ws, _cid) in connections.items():
             try:

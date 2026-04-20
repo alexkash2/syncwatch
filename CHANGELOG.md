@@ -1,5 +1,100 @@
 # Changelog
 
+## 2026-04-20 — Deep-review fixes
+
+Third independent review (two parallel agents, no context from prior
+rounds). Every P1/P2 finding addressed; half the P3s handled, the rest
+documented in TODO.md.
+
+### P1
+
+- **Rate limiter collapsed all users into one bucket behind nginx.**
+  Starlette's `request.client.host` returned the nginx container's IP for
+  every request because the backend never read `X-Forwarded-For`. Fix: nginx
+  now sets `X-Forwarded-For` / `X-Real-IP` / `X-Forwarded-Proto` on `/api/`
+  and `/ws/`; backend wraps the ASGI app with `ProxyHeadersMiddleware`;
+  uvicorn in Dockerfile + compose runs with `--proxy-headers
+  --forwarded-allow-ips=*`. Added per-IP and per-email rate-limit tests that
+  independently verify both axes using `X-Forwarded-For`.
+- **`room.host` lazy-load would raise `MissingGreenlet` on Postgres.**
+  `room_service.get_room` eager-loaded participants but not `host`; the
+  RoomDetailResponse reads `room.host.username`. SQLite-based tests
+  tolerated the implicit sync lazy load, asyncpg didn't. Fix:
+  `selectinload(Room.host)` added to the query.
+
+### P2
+
+- **"Account is disabled" message revealed user existence.** Merged the
+  disabled-account check into the same error path as wrong password so
+  login returns the same `"Invalid email or password"` regardless.
+- **Rate-limit memory was unbounded.** `RateLimiter._log` dict grew by
+  attacker-controlled keys (random emails on /login). Added `max_keys` cap,
+  a `reap()` method, and a registry (`ALL_LIMITERS`, `reap_all()`) ticked
+  every 60 s alongside ticket/jti cleanup. Idle buckets drop out
+  automatically.
+- **`verified_users` wasn't invalidated through the REST `PUT /file-info`
+  path** (and the endpoint wasn't actually used by the frontend). Removed
+  the dead endpoint entirely; the WS `file_verify_request` flow remains
+  the single code path that updates both DB file metadata and the in-memory
+  verify gate.
+- **Grace timer didn't stop on REST rejoin.** A user bouncing into
+  `/auth/ws-ticket` before the WS handshake could still be timed out
+  mid-flight and 403'd. Cancelling the grace timer now happens on ticket
+  issue too (the WS connect path was the only prior cancellation point).
+- **Host initiating `leaveRoom` / `deleteRoom` saw "The host left the
+  room." flash themselves.** `close_room` got an optional `exclude_user`;
+  both REST entry points now pass the caller's id.
+- **`onFatalTicketError` was a stale closure.** Captured once by
+  `useCallback(connect, [roomId])`, while `RoomPage` built a fresh
+  callback inline each render. Moved to a ref following the same pattern
+  already used for `onMessage`.
+- **`file_verify_request` had no per-user rate limit.** A host could spam
+  `file_changed` broadcasts at the global message cap. Added a dedicated
+  5/10s limiter with an `error/rate_limited` reply.
+- **Docker ports were exposed on `0.0.0.0`.** Postgres on :5432 (with a
+  weak default password) and backend on :8000 were reachable from the LAN,
+  and :8000 bypassed nginx's security headers. Both now bind to
+  `127.0.0.1` only. Ingress is nginx on :3000.
+- **`/health` leaked DB exception strings** (connection-string fragments,
+  driver version). Now logs the exception server-side and returns
+  `{"status": "error", "db": "unavailable"}`.
+- **`/auth/refresh` burnt the jti before validating the user.** A
+  transient DB hiccup would force re-login unnecessarily. Moved
+  `mark_refresh_used` after the User load + `is_active` check.
+
+### P3
+
+- Replaced `window.history.replaceState({}, '')` with
+  `navigate(pathname, { replace: true, state: null })` so react-router 7
+  state tracking isn't clobbered.
+- `PlaybackControls.volume` now persists to `localStorage` (`sw.volume`)
+  so it actually stays "sticky" across room changes.
+- Unhandled `Exception` in the WS handler loop is logged via
+  `logger.exception` instead of silently swallowed.
+- `ChatPanel` send-error auto-hide `setTimeout` is now stored in a ref and
+  cleared on unmount.
+- `test_rate_limit_on_login` split into two independent tests: one drives
+  the per-IP bucket (rotates emails, same IP), the other drives the
+  per-email bucket (same email, rotates X-Forwarded-For). Each fails
+  cleanly if its own axis regresses.
+- Removed dead `PUT /rooms/{id}/file-info` REST endpoint (plus the now-
+  unused import) and noted the decision in a comment.
+
+### Verification
+- `pytest -q`: 61/61 (60 + one new per-IP rate-limit test).
+- `npm run build` / `eslint .` / `vitest run` all green.
+- `docker compose build` — both images rebuild cleanly.
+
+### Carried forward (tracked in TODO.md)
+- Refresh-jti blocklist is still in-memory (multi-worker / restart loss
+  documented).
+- WS handler is still ~625 lines; per-message split deferred.
+- `WsMessage` still `[key: string]: any`; discriminated union deferred.
+- CI still doesn't run `npm audit` / `pip-audit`.
+- localStorage tokens remain (architectural — tracked as a top P1).
+
+---
+
 ## 2026-04-20 — UX residuals
 
 ### P2

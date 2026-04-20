@@ -14,7 +14,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app import database as db_module
-from app.core.rate_limit import login_limiter, register_limiter, refresh_limiter, ws_ticket_limiter
+from app.core.rate_limit import ALL_LIMITERS
 from app.main import app
 from app.models import Base
 
@@ -34,8 +34,10 @@ async def client():
     db_module.engine = test_engine
     db_module.async_session = test_session
 
-    # Rate limiters are module-level singletons; reset so tests don't bleed.
-    for limiter in (login_limiter, register_limiter, refresh_limiter, ws_ticket_limiter):
+    # Rate limiters are module-level singletons; reset every registered one
+    # (auth + WS) so tests don't bleed — relying on a hardcoded list would
+    # silently miss any limiter added later.
+    for limiter in ALL_LIMITERS:
         limiter._log.clear()
 
     transport = ASGITransport(app=app)
@@ -121,20 +123,56 @@ async def test_login_does_not_leak_user_existence(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_on_login(client: AsyncClient):
-    """11th login attempt from one IP must be rate-limited."""
+async def test_rate_limit_on_login_per_email(client: AsyncClient):
+    """Brute force against a single email is stopped even when the attacker
+    rotates IPs. We vary the source IP via X-Forwarded-For so the per-IP
+    limiter (which sees different IPs) never fires — the per-email limiter
+    has to carry this test alone.
+    """
     await client.post(
         "/api/auth/register",
         json={"username": "dan", "email": "dan@example.com", "password": "password123"},
     )
-    for _ in range(10):
+    for i in range(10):
         await client.post(
             "/api/auth/login",
             json={"email": "dan@example.com", "password": "wrong"},
+            headers={"X-Forwarded-For": f"10.0.0.{i}"},
         )
+    # 11th attempt from yet another IP: per-IP limiter is fine, per-email
+    # limiter trips.
     r = await client.post(
         "/api/auth/login",
         json={"email": "dan@example.com", "password": "wrong"},
+        headers={"X-Forwarded-For": "10.0.0.99"},
+    )
+    assert r.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_on_login_per_ip(client: AsyncClient):
+    """A single IP probing different accounts hits the per-IP limiter."""
+    # Register enough accounts that rotating emails does not trip the
+    # per-email limiter (max_events=10/60s per email).
+    for i in range(11):
+        await client.post(
+            "/api/auth/register",
+            json={
+                "username": f"u{i}",
+                "email": f"u{i}@example.com",
+                "password": "password123",
+            },
+        )
+    for i in range(10):
+        await client.post(
+            "/api/auth/login",
+            json={"email": f"u{i}@example.com", "password": "wrong"},
+            headers={"X-Forwarded-For": "10.0.0.1"},
+        )
+    r = await client.post(
+        "/api/auth/login",
+        json={"email": "u10@example.com", "password": "wrong"},
+        headers={"X-Forwarded-For": "10.0.0.1"},
     )
     assert r.status_code == 429
 
