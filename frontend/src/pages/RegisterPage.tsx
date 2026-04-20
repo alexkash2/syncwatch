@@ -18,10 +18,20 @@ export function RegisterPage() {
       setError('Passwords do not match');
       return;
     }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+    if (!/^[A-Za-z0-9_.-]{3,30}$/.test(username)) {
+      setError('Username: 3–30 characters, only letters, digits, and _ . -');
+      return;
+    }
     setLoading(true);
     try {
       await register({ username, email, password });
-      navigate('/login');
+      navigate('/login', {
+        state: { flash: 'Account created. Please log in.' },
+      });
     } catch (err: unknown) {
       setError((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Registration failed');
     } finally {
@@ -64,9 +74,18 @@ export function RegisterPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full bg-surface-container-lowest border-0 border-b border-outline-variant/20 focus:border-primary-container focus:outline-none text-on-surface py-3 px-0 transition-colors placeholder:text-on-surface-variant/30"
                 placeholder="Username"
+                title="3–30 characters · letters, digits, and _ . -"
                 required
                 minLength={3}
+                maxLength={30}
               />
+              {/* JS-side validation in handleSubmit enforces the character set.
+                  We intentionally skip the HTML `pattern` attribute: Chromium
+                  reports "[A-Za-z0-9_.-]+" as an invalid pattern regex in its
+                  console even though the equivalent JS regex is fine. */}
+              <p className="text-[10px] text-on-surface-variant/60 mt-1">
+                3–30 characters · letters, digits, and _ . -
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -83,6 +102,10 @@ export function RegisterPage() {
               />
             </div>
 
+            <p className="text-[10px] text-on-surface-variant/60 -mt-2">
+              Password must be at least 8 characters.
+            </p>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-1.5">
                 <label className="text-[10px] uppercase tracking-[0.1em] text-on-surface-variant block">
@@ -95,7 +118,8 @@ export function RegisterPage() {
                   className="w-full bg-surface-container-lowest border-0 border-b border-outline-variant/20 focus:border-primary-container focus:outline-none text-on-surface py-3 px-0 transition-colors placeholder:text-on-surface-variant/30"
                   placeholder="••••••••"
                   required
-                  minLength={6}
+                  minLength={8}
+                  maxLength={72}
                 />
               </div>
               <div className="space-y-1.5">

@@ -7,11 +7,20 @@ interface PlaybackControlsProps {
   onPause: (timeMs: number) => void;
   onSeek: (timeMs: number) => void;
   videoReady: boolean;
+  onNonHostControlAttempt?: () => void;
 }
 
 const SKIP_SECONDS = 5;
 
-export function PlaybackControls({ videoRef, isHost, onPlay, onPause, onSeek, videoReady }: PlaybackControlsProps) {
+export function PlaybackControls({
+  videoRef,
+  isHost,
+  onPlay,
+  onPause,
+  onSeek,
+  videoReady,
+  onNonHostControlAttempt,
+}: PlaybackControlsProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -53,7 +62,10 @@ export function PlaybackControls({ videoRef, isHost, onPlay, onPause, onSeek, vi
   }, [volume, videoRef, videoReady]);
 
   const togglePlay = useCallback(() => {
-    if (!isHost) return;
+    if (!isHost) {
+      onNonHostControlAttempt?.();
+      return;
+    }
     const video = videoRef.current;
     if (!video) return;
     const timeMs = Math.round(video.currentTime * 1000);
@@ -64,16 +76,19 @@ export function PlaybackControls({ videoRef, isHost, onPlay, onPause, onSeek, vi
       video.pause();
       onPause(timeMs);
     }
-  }, [isHost, videoRef, onPlay, onPause]);
+  }, [isHost, videoRef, onPlay, onPause, onNonHostControlAttempt]);
 
   const skipBy = useCallback((seconds: number) => {
-    if (!isHost) return;
+    if (!isHost) {
+      onNonHostControlAttempt?.();
+      return;
+    }
     const video = videoRef.current;
     if (!video) return;
     const newTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + seconds));
     video.currentTime = newTime;
     onSeek(Math.round(newTime * 1000));
-  }, [isHost, videoRef, onSeek]);
+  }, [isHost, videoRef, onSeek, onNonHostControlAttempt]);
 
   const toggleFullscreen = useCallback(() => {
     const container = videoRef.current?.closest('section');
@@ -205,7 +220,12 @@ export function PlaybackControls({ videoRef, isHost, onPlay, onPause, onSeek, vi
         </div>
 
         <div className="flex items-center gap-3 md:gap-4">
-          <span className="text-on-surface-variant text-sm">🔊</span>
+          <span
+            className="text-on-surface-variant text-sm"
+            title="Volume only affects you"
+          >
+            🔊
+          </span>
           <input
             type="range"
             min={0}
@@ -214,6 +234,8 @@ export function PlaybackControls({ videoRef, isHost, onPlay, onPause, onSeek, vi
             value={volume}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
             className="w-16 md:w-24 h-[2px] bg-surface-container-highest appearance-none cursor-pointer accent-primary"
+            title="Volume (only affects you)"
+            aria-label="Your volume"
           />
 
           <button

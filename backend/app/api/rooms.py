@@ -90,7 +90,12 @@ async def leave_room(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await room_service.leave_room(db, room_id, current_user.id)
+    was_host = await room_service.leave_room(db, room_id, current_user.id)
+    # If the host leaves explicitly, tear down WS for everyone immediately
+    # instead of waiting for host-grace-period timeout.
+    if was_host:
+        from app.ws.manager import manager
+        await manager.close_room(str(room_id), "host_left")
     return {"ok": True}
 
 
@@ -101,6 +106,9 @@ async def delete_room(
     db: AsyncSession = Depends(get_db),
 ):
     await room_service.delete_room(db, room_id, current_user.id)
+    # Notify any active WS sessions so clients navigate out immediately.
+    from app.ws.manager import manager
+    await manager.close_room(str(room_id), "deleted")
     return {"ok": True}
 
 

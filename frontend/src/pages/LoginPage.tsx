@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const flashMessage = (location.state as { flash?: string } | null)?.flash;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -49,6 +51,12 @@ export function LoginPage() {
               Enter your credentials to continue.
             </p>
           </div>
+
+          {flashMessage && (
+            <div className="mb-6 p-3 bg-primary-container/20 border border-primary-container/40 text-primary text-sm">
+              {flashMessage}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="space-y-2">

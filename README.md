@@ -1,117 +1,98 @@
 # SyncWatch
 
-Web application for synchronized video playback. Users create rooms and watch the same video together — each plays a local file from their own device, with playback synced in real-time via WebSocket.
+Web app for synchronised video playback. Users create rooms and watch the same movie together — each plays a file from their own device, the server coordinates playback and chat in real time over WebSocket. Nothing is uploaded.
 
 ## Stack
 
-- **Backend**: Python, FastAPI, WebSocket, SQLAlchemy 2.0 (async), PostgreSQL
-- **Frontend**: React 19, TypeScript, Tailwind CSS v4, Vite
-- **Deployment**: Docker Compose
+- **Backend**: Python 3.13, FastAPI, WebSocket, SQLAlchemy 2.0 (async), Alembic, PostgreSQL 16.
+- **Frontend**: React 19, TypeScript, Tailwind CSS v4, Vite.
+- **Deployment**: Docker Compose (postgres + backend + nginx-served SPA), multi-stage non-root backend image.
 
-## Concept
-
-- No file uploads — each user plays a local video file
-- Files are verified to be identical via partial SHA-256 hash (head + middle + tail + size)
-- Host controls playback (play/pause/seek), synced to all participants via WebSocket
-- Text chat inside rooms (persisted, cursor-paginated history)
-- Independent volume per user
-- Reconnect with grace periods (host 30s, participant 60s)
-
-## How to Run
-
-### Development (local)
+## Quick start
 
 ```bash
-# Start PostgreSQL
-docker run -d --name syncwatch-pg \
-  -e POSTGRES_USER=syncwatch -e POSTGRES_PASSWORD=syncwatch -e POSTGRES_DB=syncwatch \
-  -p 5432:5432 postgres:16-alpine
+cp .env.example .env
+# Edit .env — at minimum set SECRET_KEY (generate with:
+#   python -c "import secrets; print(secrets.token_hex(32))")
+docker compose up --build
+```
 
+Open http://localhost:3000.
+
+For running without Docker, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## What it does
+
+- **Local-file playback** — each participant plays a file from their disk. Identity verified via partial SHA-256 (`head ‖ middle ‖ tail ‖ size`) — no uploads.
+- **Host-controlled playback** — only the room creator can play/pause/seek. State is server-authoritative; everyone else gets `sync_state` broadcasts.
+- **Drift correction** — server sends `sync_check` every 3 s while playing, clients report position + buffer health, server decides between "ignore / nudge rate / hard seek".
+- **Text chat** — persisted, cursor-paginated history, rate-limited.
+- **Reconnect with grace periods** — host 30 s, participant 60 s. Host dropping autopauses for everyone; reconnect resumes.
+- **Tab dedup** — one active tab per user per room; opening a second tab kicks the first with a clear message.
+
+## Player controls
+
+- **Play/Pause** — click button, click video area, or press `Space` *(host only)*
+- **Seek ±5 s** — `←` / `→` arrow keys, or ⏪ / ⏩ buttons *(host only)*
+- **Fullscreen** — `F` key or ⛶ button
+- **Volume** — slider, independent per user
+
+## Repo layout
+
+```
+syncwatch/
+├── backend/          FastAPI + WebSocket (see docs/ARCHITECTURE.md)
+├── frontend/         React SPA
+├── docs/             documentation (start here)
+├── docker-compose.yml
+├── .env.example
+├── .github/workflows/ci.yml
+├── CHANGELOG.md
+└── TODO.md           outstanding work + known limitations
+```
+
+## Documentation
+
+| Doc                                               | What it covers                                                      |
+| ------------------------------------------------- | ------------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)      | System diagram, directory layout, DB schema, design decisions.      |
+| [docs/API.md](docs/API.md)                        | REST endpoints, rate limits, error shapes.                          |
+| [docs/WS_PROTOCOL.md](docs/WS_PROTOCOL.md)        | WebSocket message types (client ↔ server), error codes, close codes. |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)          | Docker, env vars, migrations, graceful shutdown, production notes.  |
+| [docs/SECURITY.md](docs/SECURITY.md)              | What's defended, how. Threat model and known gaps.                  |
+| [docs/TESTING.md](docs/TESTING.md)                | Test layout, how to run, manual E2E smoke list.                     |
+| [TODO.md](TODO.md)                                | Everything that's deliberately left for later.                      |
+| [CHANGELOG.md](CHANGELOG.md)                      | History of notable changes.                                         |
+
+FastAPI also serves interactive API docs at `/docs` (Swagger UI) and `/redoc`.
+
+## Development
+
+```bash
 # Backend
 cd backend
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 PYTHONPATH=. alembic upgrade head
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+PYTHONPATH=. uvicorn app.main:app --reload
 
-# Frontend (in another terminal)
+# Frontend (new terminal)
 cd frontend
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000
-
-### Docker Compose (production)
-
-```bash
-cp .env.example .env
-# Edit .env — set a real SECRET_KEY!
-docker compose up --build
-```
-
-Open http://localhost:3000
-
-## Project Structure
-
-```
-backend/          FastAPI + WebSocket server
-  app/
-    api/          REST endpoints (auth, rooms, chat)
-    ws/           WebSocket handler, ConnectionManager, sync algorithm
-    models/       SQLAlchemy models (User, Room, RoomParticipant, ChatMessage)
-    services/     Business logic (auth, rooms, chat)
-    core/         Security (JWT, bcrypt, ws-ticket), dependencies
-  alembic/        Database migrations
-  tests/          Unit tests (51 passing)
-
-frontend/         React SPA
-  src/
-    pages/        Login, Register, Home, Room, 404
-    components/   VideoPlayer, PlaybackControls, FileSelector, ChatPanel, ParticipantList
-    hooks/        useAuth, useWebSocket, useVideoSync, useFileHash
-    contexts/     AuthContext
-    api/          Axios client with JWT interceptor
-    utils/        File hashing (partial SHA-256)
-    types/        TypeScript type definitions
-```
-
-## Player Controls
-
-- **Play/Pause**: click button, click video area, or press `Space`
-- **Seek ±5s**: `←` / `→` arrow keys, or ⏪/⏩ buttons
-- **Fullscreen**: `F` key or ⛶ button
-- **Volume**: slider (independent per user, not synced)
-
-## Key Technical Decisions
-
-- **One backend instance** — all realtime state in-memory (ConnectionManager). No Redis/horizontal scaling in MVP.
-- **One tab per user per room** — duplicate tabs get `tab_replaced` error.
-- **WS auth via one-time ticket** — not JWT in query string. Ticket issued via REST, 30s TTL.
-- **All protocol times in integer milliseconds** — no float ambiguity.
-- **Host-only playback control** — only the room creator can play/pause/seek.
-- **Heartbeat every 3s** — drift < 300ms ignored, 300ms–2s nudge, >2s hard seek.
-
-## Implementation Status
-
-- [x] Phase 1: Auth (register, login, JWT, ws-ticket)
-- [x] Phase 2: Rooms (create, join, leave, list)
-- [x] Phase 3: WebSocket + real-time chat
-- [x] Phase 4: File selection + verification
-- [x] Phase 5: Video player + playback sync
-- [x] Phase 6: Reconnect + grace periods
-- [ ] Phase 7: Polish + Docker finalization
+Vite dev server proxies `/api` and `/ws` to `http://localhost:8000`.
 
 ## Tests
 
 ```bash
-cd backend
-PYTHONPATH=. python -m pytest -q   # 51 tests
+cd backend && PYTHONPATH=. pytest -q           # 59 tests
+cd frontend && npx tsc --noEmit && npm run test:run
 ```
 
-```bash
-cd frontend
-npx tsc --noEmit    # TypeScript check
-npx eslint .        # Lint check
-```
+CI runs all of the above plus `docker compose build` on every push / PR. See [docs/TESTING.md](docs/TESTING.md).
 
-See [PLAN.md](PLAN.md) for the full implementation plan.
+## License
+
+University project; no license specified yet.

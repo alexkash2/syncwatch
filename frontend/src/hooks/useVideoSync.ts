@@ -1,14 +1,26 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WsMessage } from '../types/ws';
 
 interface UseVideoSyncOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   send: (type: string, payload?: Record<string, unknown>) => boolean;
-  fileVersion: number;
+  fileVersionRef: React.MutableRefObject<number>;
 }
 
-export function useVideoSync({ videoRef, send, fileVersion }: UseVideoSyncOptions) {
-  const nudgeTimer = useRef<ReturnType<typeof setTimeout>>();
+export function useVideoSync({ videoRef, send, fileVersionRef }: UseVideoSyncOptions) {
+  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+
+  const resumePlayback = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video
+      .play()
+      .then(() => setAutoplayBlocked(false))
+      .catch(() => {
+        // Still blocked — keep overlay up
+      });
+  }, [videoRef]);
 
   const handleSyncMessage = useCallback(
     (msg: WsMessage) => {
@@ -17,8 +29,8 @@ export function useVideoSync({ videoRef, send, fileVersion }: UseVideoSyncOption
 
       // Seq is already checked and updated by handleWsMessage in RoomPage — no duplicate check here.
 
-      // file_version check for sync messages
-      if (msg.file_version !== undefined && msg.file_version !== fileVersion) return;
+      // file_version check — read current ref, not stale closure value
+      if (msg.file_version !== undefined && msg.file_version !== fileVersionRef.current) return;
 
       switch (msg.type) {
         case 'sync_state': {
@@ -27,11 +39,13 @@ export function useVideoSync({ videoRef, send, fileVersion }: UseVideoSyncOption
             video.currentTime = targetSec;
           }
           if (msg.is_playing && video.paused) {
-            video.play().catch(() => {
+            video.play().then(() => setAutoplayBlocked(false)).catch(() => {
+              setAutoplayBlocked(true);
               send('playback_error', { error_code: 'autoplay_blocked' });
             });
           } else if (!msg.is_playing && !video.paused) {
             video.pause();
+            setAutoplayBlocked(false);
           }
           break;
         }
@@ -74,12 +88,12 @@ export function useVideoSync({ videoRef, send, fileVersion }: UseVideoSyncOption
         }
       }
     },
-    [videoRef, send, fileVersion]
+    [videoRef, send, fileVersionRef]
   );
 
   useEffect(() => {
     return () => clearTimeout(nudgeTimer.current);
   }, []);
 
-  return { handleSyncMessage };
+  return { handleSyncMessage, autoplayBlocked, resumePlayback };
 }

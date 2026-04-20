@@ -1,25 +1,48 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router';
-import { createRoom, joinRoom, listRooms } from '../api/rooms';
+import { useLocation, useNavigate } from 'react-router';
+import { createRoom, deleteRoom, joinRoom, listRooms } from '../api/rooms';
 import { useAuth } from '../hooks/useAuth';
 import { Layout } from '../components/layout/Layout';
 import type { Room } from '../types/room';
 
 export function HomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomName, setRoomName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [flash, setFlash] = useState<string | null>(
+    (location.state as { flash?: string } | null)?.flash ?? null
+  );
+
+  // Clear the flash out of router state so it doesn't replay on refresh/back.
+  useEffect(() => {
+    if (location.state && (location.state as { flash?: string }).flash) {
+      window.history.replaceState({}, '');
+    }
+    if (flash) {
+      const t = setTimeout(() => setFlash(null), 6000);
+      return () => clearTimeout(t);
+    }
+  }, [flash, location.state]);
+
+  const [roomsLoading, setRoomsLoading] = useState(true);
+  const [roomsLoadError, setRoomsLoadError] = useState(false);
 
   const fetchRooms = useCallback(async () => {
+    setRoomsLoadError(false);
     try {
       const data = await listRooms();
       setRooms(data.rooms);
     } catch {
-      // ignore
+      // Surface the failure — otherwise an empty list below is
+      // indistinguishable from "backend down / network error".
+      setRoomsLoadError(true);
+    } finally {
+      setRoomsLoading(false);
     }
   }, []);
 
@@ -39,6 +62,23 @@ export function HomePage() {
       setError((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Failed to create room');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (roomId: string) => {
+    if (!window.confirm('Delete this room? All participants will be disconnected.')) {
+      return;
+    }
+    setError('');
+    try {
+      await deleteRoom(roomId);
+      setFlash('Room deleted.');
+      await fetchRooms();
+    } catch (err: unknown) {
+      setError(
+        (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ||
+          'Failed to delete room'
+      );
     }
   };
 
@@ -67,6 +107,19 @@ export function HomePage() {
           Create or join a room to start watching
         </p>
       </section>
+
+      {flash && (
+        <div className="mb-4 p-4 bg-primary-container/20 border border-primary-container/40 text-primary text-sm flex justify-between items-start">
+          <span>{flash}</span>
+          <button
+            onClick={() => setFlash(null)}
+            className="ml-4 text-on-surface-variant hover:text-on-surface cursor-pointer"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="mb-8 p-4 bg-error-container/20 border border-error/30 text-error text-sm">
@@ -133,7 +186,26 @@ export function HomePage() {
         <h2 className="font-bold text-3xl tracking-tighter mb-2">My Rooms</h2>
         <p className="text-on-surface-variant text-sm mb-8">Your active and recent rooms.</p>
 
-        {rooms.length === 0 ? (
+        {roomsLoading ? (
+          <div className="bg-surface-container-lowest text-center py-12 text-on-surface-variant">
+            Loading your rooms…
+          </div>
+        ) : roomsLoadError ? (
+          <div className="bg-error-container/20 border border-error/30 text-error px-6 py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <div className="font-bold text-sm mb-1">Couldn't load your rooms.</div>
+              <div className="text-xs text-on-surface-variant">
+                The server didn't respond. This doesn't mean you have no rooms.
+              </div>
+            </div>
+            <button
+              onClick={fetchRooms}
+              className="shrink-0 text-[10px] uppercase tracking-widest px-4 py-2 border border-error/50 hover:bg-error/10 transition-colors cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        ) : rooms.length === 0 ? (
           <div className="bg-surface-container-lowest text-center py-12 text-on-surface-variant">
             No rooms yet. Create one or join with a code.
           </div>
@@ -146,6 +218,7 @@ export function HomePage() {
                   <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-on-surface-variant">Room Code</th>
                   <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-on-surface-variant">Role</th>
                   <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-on-surface-variant text-right">Created</th>
+                  <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-on-surface-variant text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/5">
@@ -179,6 +252,20 @@ export function HomePage() {
                     </td>
                     <td className="px-8 py-6 text-right text-xs text-on-surface-variant">
                       {new Date(room.created_at).toLocaleDateString()}
+                    </td>
+                    <td
+                      className="px-8 py-6 text-right"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {room.host_id === user?.id && (
+                        <button
+                          onClick={() => handleDelete(room.id)}
+                          className="text-[10px] uppercase tracking-widest text-error hover:text-on-surface cursor-pointer"
+                          title="Delete room"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

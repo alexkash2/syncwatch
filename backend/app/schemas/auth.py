@@ -5,9 +5,12 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=50)
+    # Alphanumeric + underscore/hyphen/dot. Blocks whitespace, unicode lookalikes,
+    # and control characters that enable impersonation in chat/participant list.
+    username: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_.\-]+$")
     email: EmailStr
-    password: str = Field(min_length=6, max_length=128)
+    # OWASP ASVS recommends 8+; bcrypt truncates at 72 bytes so cap below that.
+    password: str = Field(min_length=8, max_length=72)
 
 
 class LoginRequest(BaseModel):

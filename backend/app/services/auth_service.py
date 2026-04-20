@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from app.core.security import (
     create_refresh_token,
     decode_token,
     hash_password,
+    mark_refresh_used,
     verify_password,
 )
 from app.models.user import User
@@ -19,15 +20,24 @@ from app.schemas.auth import TokenResponse
 async def register_user(
     db: AsyncSession, username: str, email: str, password: str
 ) -> User:
+    # Normalize to prevent "Admin" vs "admin" duplicate accounts (impersonation).
+    normalized_username = username.strip()
+    normalized_email = email.strip().lower()
+
+    # Case-insensitive uniqueness check. The generic error message avoids
+    # leaking which field collided (mitigates account enumeration).
     existing = await db.execute(
-        select(User).where((User.email == email) | (User.username == username))
+        select(User).where(
+            (func.lower(User.email) == normalized_email)
+            | (func.lower(User.username) == normalized_username.lower())
+        )
     )
     if existing.scalar_one_or_none() is not None:
-        raise ConflictError("User with this email or username already exists")
+        raise ConflictError("Registration failed. Please try different credentials.")
 
     user = User(
-        username=username,
-        email=email,
+        username=normalized_username,
+        email=normalized_email,
         password_hash=hash_password(password),
     )
     db.add(user)
@@ -35,15 +45,30 @@ async def register_user(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise ConflictError("User with this email or username already exists")
+        raise ConflictError("Registration failed. Please try different credentials.")
     await db.refresh(user)
     return user
 
 
+# A pre-computed bcrypt hash used to neutralize the timing difference between
+# "user not found" (no bcrypt work) and "wrong password" (full bcrypt compare).
+# The plaintext for this hash is not used anywhere; only the cost matters.
+_DUMMY_BCRYPT_HASH = (
+    "$2b$12$CwTycUXWue0Thq9StjUM0u" "J8pY6b8F2KIL7v8qKMSz/fWeS/uRYEq"
+)
+
+
 async def login_user(db: AsyncSession, email: str, password: str) -> TokenResponse:
-    result = await db.execute(select(User).where(User.email == email))
+    # Normalize email for lookup — registration also lowercases on storage.
+    normalized = email.strip().lower()
+    result = await db.execute(select(User).where(User.email == normalized))
     user = result.scalar_one_or_none()
-    if user is None or not verify_password(password, user.password_hash):
+    if user is None:
+        # Run bcrypt against a dummy hash so "user not found" takes roughly
+        # the same time as "wrong password" — stops timing-based enumeration.
+        verify_password(password, _DUMMY_BCRYPT_HASH)
+        raise BadRequestError("Invalid email or password")
+    if not verify_password(password, user.password_hash):
         raise BadRequestError("Invalid email or password")
     if not user.is_active:
         raise BadRequestError("Account is disabled")
@@ -57,6 +82,14 @@ async def login_user(db: AsyncSession, email: str, password: str) -> TokenRespon
 async def refresh_tokens(db: AsyncSession, refresh_token: str) -> TokenResponse:
     payload = decode_token(refresh_token, expected_type="refresh")
     if payload is None:
+        raise BadRequestError("Invalid or expired refresh token")
+
+    # Single-use rotation: reject replay of a previously-used refresh token
+    # before we issue a new pair. Old tokens without a jti (from pre-rotation
+    # builds) are treated as invalid — forces the client to log in again.
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    if not jti or not exp or not mark_refresh_used(jti, int(exp)):
         raise BadRequestError("Invalid or expired refresh token")
 
     user_id_str = payload.get("sub")

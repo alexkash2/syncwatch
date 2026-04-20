@@ -31,6 +31,10 @@ export async function leaveRoom(roomId: string): Promise<void> {
   await client.post(`/rooms/${roomId}/leave`);
 }
 
+export async function deleteRoom(roomId: string): Promise<void> {
+  await client.delete(`/rooms/${roomId}`);
+}
+
 export async function getChatHistory(roomId: string, cursor?: string): Promise<ChatHistoryResponse> {
   const params: Record<string, string | number> = { limit: 50 };
   if (cursor) params.cursor = cursor;

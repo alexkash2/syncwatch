@@ -20,7 +20,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://syncwatch:${DB_PASSWORD:-syncwatch}@postgres:5432/syncwatch
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      CORS_ORIGINS: http://localhost:3000,http://localhost
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost,http://127.0.0.1:3000,http://127.0.0.1}
     ports:
       - "8000:8000"
     depends_on:
@@ -28,13 +29,22 @@ services:
         condition: service_healthy
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # Give uvicorn time to finish in-flight WS shutdowns on stop.
+    stop_grace_period: 15s
 
   frontend:
     build: ./frontend
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   pgdata:

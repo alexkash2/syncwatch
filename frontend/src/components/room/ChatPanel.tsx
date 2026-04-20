@@ -1,20 +1,98 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { ChatMessage } from '../../types/ws';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
   onSend: (content: string) => boolean;
   currentUserId: string;
+  onLoadMore?: () => Promise<boolean> | void;
+  hasMore?: boolean;
+  /** True if the last history fetch (initial or paginated) failed. */
+  loadError?: boolean;
+  /** Retry the initial history fetch. */
+  onRetryLoad?: () => void | Promise<void>;
 }
 
-export function ChatPanel({ messages, onSend, currentUserId }: ChatPanelProps) {
+// Memoized row — the heavy case is long histories where unchanged rows
+// shouldn't re-render when a single new message arrives.
+const ChatRow = memo(function ChatRow({
+  msg,
+  currentUserId,
+}: {
+  msg: ChatMessage;
+  currentUserId: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between items-baseline">
+        <span
+          className={`font-bold text-[10px] tracking-widest uppercase ${
+            msg.user_id === currentUserId ? 'text-primary' : 'text-on-surface-variant'
+          }`}
+        >
+          {msg.username}
+        </span>
+        <span className="text-[9px] text-on-surface-variant/50">
+          {new Date(msg.created_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </span>
+      </div>
+      <p className="text-sm leading-relaxed text-on-surface/90">{msg.content}</p>
+    </div>
+  );
+});
+
+export function ChatPanel({
+  messages,
+  onSend,
+  currentUserId,
+  onLoadMore,
+  hasMore = false,
+  loadError = false,
+  onRetryLoad,
+}: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [sendError, setSendError] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastMessageIdRef = useRef<string | undefined>(undefined);
+  const atBottomRef = useRef(true);
 
+  // Auto-scroll to bottom only for NEW incoming messages and only if the user
+  // is already near the bottom (don't yank them around while they read history).
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const latest = messages[messages.length - 1]?.id;
+    if (latest && latest !== lastMessageIdRef.current && atBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    lastMessageIdRef.current = latest;
   }, [messages]);
+
+  const handleScroll = useCallback(async () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+
+    if (el.scrollTop < 40 && hasMore && !loadingMore && onLoadMore) {
+      setLoadingMore(true);
+      // Preserve scroll offset after prepending older messages.
+      const prevHeight = el.scrollHeight;
+      try {
+        await onLoadMore();
+      } finally {
+        requestAnimationFrame(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop =
+              scrollRef.current.scrollHeight - prevHeight;
+          }
+          setLoadingMore(false);
+        });
+      }
+    }
+  }, [hasMore, loadingMore, onLoadMore]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -32,23 +110,49 @@ export function ChatPanel({ messages, onSend, currentUserId }: ChatPanelProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg) => (
-          <div key={msg.id} className="space-y-1">
-            <div className="flex justify-between items-baseline">
-              <span
-                className={`font-bold text-[10px] tracking-widest uppercase ${
-                  msg.user_id === currentUserId ? 'text-primary' : 'text-on-surface-variant'
-                }`}
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+      >
+        {loadError && messages.length === 0 && (
+          <div className="bg-error-container/20 border border-error/30 text-error p-3 text-xs flex flex-col gap-2">
+            <span>Couldn't load chat history.</span>
+            {onRetryLoad && (
+              <button
+                onClick={onRetryLoad}
+                className="self-start text-[10px] uppercase tracking-widest underline hover:no-underline cursor-pointer"
               >
-                {msg.username}
-              </span>
-              <span className="text-[9px] text-on-surface-variant/50">
-                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            </div>
-            <p className="text-sm leading-relaxed text-on-surface/90">{msg.content}</p>
+                Retry
+              </button>
+            )}
           </div>
+        )}
+        {loadError && messages.length > 0 && (
+          <div className="text-center text-[10px] text-error">
+            Couldn't load earlier messages.{' '}
+            {onRetryLoad && (
+              <button
+                onClick={onRetryLoad}
+                className="underline hover:no-underline cursor-pointer"
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
+        {loadingMore && (
+          <div className="text-center text-[10px] text-on-surface-variant/60">
+            Loading earlier messages…
+          </div>
+        )}
+        {!hasMore && messages.length > 0 && (
+          <div className="text-center text-[10px] text-on-surface-variant/40">
+            Beginning of conversation
+          </div>
+        )}
+        {messages.map((msg) => (
+          <ChatRow key={msg.id} msg={msg} currentUserId={currentUserId} />
         ))}
         <div ref={bottomRef} />
       </div>
