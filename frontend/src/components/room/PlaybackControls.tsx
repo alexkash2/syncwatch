@@ -229,8 +229,8 @@ export function PlaybackControls({
   };
 
   return (
-    <div className="h-20 md:h-24 bg-surface-container/60 backdrop-blur-2xl border-t border-outline-variant/20 flex flex-col justify-center px-4 md:px-12 shrink-0">
-      <div className="w-full mb-3">
+    <div className="shrink-0 border-t border-outline-variant/20 bg-surface-container/60 px-4 py-3 backdrop-blur-2xl md:px-12 md:py-4">
+      <div className="mb-3 w-full">
         <input
           type="range"
           min={0}
@@ -247,42 +247,60 @@ export function PlaybackControls({
         />
       </div>
 
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2 md:gap-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:gap-6">
           <button
+            type="button"
             onClick={() => skipBy(-SKIP_SECONDS)}
-            disabled={!isHost}
-            className="text-on-surface-variant text-base md:text-lg cursor-pointer disabled:opacity-40 disabled:cursor-default hover:text-primary transition-colors"
-            title={`Rewind ${SKIP_SECONDS}s`}
+            aria-disabled={!isHost}
+            className={`text-sm transition-colors md:text-lg ${
+              isHost
+                ? 'cursor-pointer text-on-surface-variant hover:text-primary'
+                : 'cursor-pointer text-on-surface-variant/55 hover:text-primary'
+            }`}
+            title={isHost ? `Rewind ${SKIP_SECONDS}s` : 'Only the host can rewind'}
+            aria-label={isHost ? `Rewind ${SKIP_SECONDS} seconds` : 'Only the host can rewind'}
           >
             -5s
           </button>
 
           <button
+            type="button"
             onClick={togglePlay}
-            disabled={!isHost}
-            className="text-on-surface-variant text-base md:text-lg cursor-pointer disabled:opacity-40 disabled:cursor-default hover:text-primary transition-colors"
-            title="Play or pause"
+            aria-disabled={!isHost}
+            className={`text-sm transition-colors md:text-lg ${
+              isHost
+                ? 'cursor-pointer text-on-surface-variant hover:text-primary'
+                : 'cursor-pointer text-on-surface-variant/55 hover:text-primary'
+            }`}
+            title={isHost ? 'Play or pause' : 'Only the host can control playback'}
+            aria-label={isHost ? 'Play or pause video' : 'Only the host can control playback'}
           >
             {isPlaying ? 'Pause' : 'Play'}
           </button>
 
           <button
+            type="button"
             onClick={() => skipBy(SKIP_SECONDS)}
-            disabled={!isHost}
-            className="text-on-surface-variant text-base md:text-lg cursor-pointer disabled:opacity-40 disabled:cursor-default hover:text-primary transition-colors"
-            title={`Forward ${SKIP_SECONDS}s`}
+            aria-disabled={!isHost}
+            className={`text-sm transition-colors md:text-lg ${
+              isHost
+                ? 'cursor-pointer text-on-surface-variant hover:text-primary'
+                : 'cursor-pointer text-on-surface-variant/55 hover:text-primary'
+            }`}
+            title={isHost ? `Forward ${SKIP_SECONDS}s` : 'Only the host can skip forward'}
+            aria-label={isHost ? `Skip forward ${SKIP_SECONDS} seconds` : 'Only the host can skip forward'}
           >
             +5s
           </button>
 
-          <span className="text-[10px] md:text-xs uppercase tracking-widest text-primary-container font-mono ml-2">
+          <span className="min-w-0 text-[10px] font-mono uppercase tracking-widest text-primary-container md:ml-2 md:text-xs">
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>
         </div>
 
-        <div className="flex items-center gap-3 md:gap-4">
-          <span className="text-on-surface-variant text-sm" title="Volume only affects you">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 md:gap-4">
+          <span className="text-sm text-on-surface-variant" title="Volume only affects you">
             Vol
           </span>
           <input
@@ -298,9 +316,11 @@ export function PlaybackControls({
           />
 
           <button
+            type="button"
             onClick={toggleFullscreen}
             className="text-on-surface-variant text-sm md:text-base cursor-pointer hover:text-primary transition-colors"
             title="Fullscreen"
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
           >
             {isFullscreen ? 'Exit' : 'Full'}
           </button>

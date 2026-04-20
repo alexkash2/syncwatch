@@ -117,3 +117,31 @@ export function LayoutPanelIcon(props: IconProps) {
     </BaseIcon>
   );
 }
+
+export function CopyIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect x="8" y="7" width="9.5" height="11" rx="1.8" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M6.5 15.5H6A1.75 1.75 0 0 1 4.25 13.75V6.75C4.25 5.78 5.03 5 6 5h6.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </BaseIcon>
+  );
+}
+
+export function CheckIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path
+        d="m6.75 12.35 3.25 3.15 7.25-7.25"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </BaseIcon>
+  );
+}

@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -16,6 +17,8 @@ import { Input } from '../components/ui/Input';
 import {
   ArrowUpRightIcon,
   ChatBubbleIcon,
+  CheckIcon,
+  CopyIcon,
   RefreshIcon,
   UsersIcon,
   VideoIcon,
@@ -39,6 +42,8 @@ export function HomePage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
+  const [copiedRoomId, setCopiedRoomId] = useState<string | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (location.state && (location.state as { flash?: string }).flash) {
@@ -57,6 +62,14 @@ export function HomePage() {
     const timeoutId = window.setTimeout(() => setFlash(null), 6000);
     return () => window.clearTimeout(timeoutId);
   }, [flash]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   const fetchRooms = useCallback(async () => {
     setIsLoadingRooms(true);
@@ -80,6 +93,15 @@ export function HomePage() {
     () => rooms.filter((room) => room.host_id === user?.id).length,
     [rooms, user?.id]
   );
+  const sortedRooms = useMemo(
+    () =>
+      [...rooms].sort(
+        (left, right) =>
+          new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+      ),
+    [rooms]
+  );
+  const latestRoom = sortedRooms[0] ?? null;
 
   const joinedRooms = rooms.length - ownedRooms;
 
@@ -149,21 +171,41 @@ export function HomePage() {
     [fetchRooms]
   );
 
+  const handleCopyRoomCode = useCallback(async (roomId: string, roomCode: string) => {
+    if (copyTimerRef.current !== null) {
+      window.clearTimeout(copyTimerRef.current);
+    }
+
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      setCopiedRoomId(roomId);
+      copyTimerRef.current = window.setTimeout(() => {
+        setCopiedRoomId(null);
+      }, 1800);
+    } catch {
+      setError('Could not copy the room code in this browser.');
+    }
+  }, []);
+
+  const scrollToSection = useCallback((sectionId: string) => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   return (
     <Layout>
-      <section className="relative overflow-hidden rounded-[2.4rem] border border-outline-variant/18 bg-surface-container-low/78 px-6 py-8 shadow-[0_32px_90px_rgba(0,0,0,0.3)] md:px-10 md:py-12 xl:px-12">
+      <section className="relative overflow-hidden rounded-[2.4rem] border border-outline-variant/18 bg-surface-container-low/78 px-5 py-7 shadow-[0_32px_90px_rgba(0,0,0,0.3)] sm:px-6 md:px-10 md:py-12 xl:px-12">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,98,255,0.18),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0.05),transparent_40%)]" />
           <div className="absolute -right-12 top-10 h-44 w-44 rounded-full border border-primary-container/12 bg-primary-container/12 blur-3xl" />
           <div className="absolute left-0 top-0 h-full w-px bg-white/8" />
         </div>
 
-        <div className="relative z-10 grid gap-10 xl:grid-cols-[1.4fr_0.9fr] xl:items-end">
+        <div className="relative z-10 grid gap-8 xl:grid-cols-[1.4fr_0.9fr] xl:items-end">
           <div>
             <Badge tone="primary" className="mb-3">
               Session Control Center
             </Badge>
-            <h1 className="max-w-4xl text-4xl font-black tracking-tight text-on-surface md:text-5xl xl:text-[3.6rem]">
+            <h1 className="max-w-4xl text-3xl font-black tracking-tight text-on-surface sm:text-4xl md:text-5xl xl:text-[3.6rem]">
               {user?.username
                 ? `${user.username}, keep every watch session on the same beat.`
                 : 'Keep every watch session on the same beat.'}
@@ -172,7 +214,32 @@ export function HomePage() {
               Create a room when you want to host a synced viewing session, or jump into an existing room with a code from the group.
             </p>
 
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <div className="mt-5 flex flex-wrap gap-2">
+              <HeroPill label="Host-led timeline" />
+              <HeroPill label="Private local media" />
+              <HeroPill label="Fast room re-entry" />
+            </div>
+
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => scrollToSection('create-room')}
+                className="w-full sm:w-auto"
+              >
+                Create a room
+              </Button>
+              <Button
+                variant="ghost"
+                size="lg"
+                onClick={() => scrollToSection('join-room')}
+                className="w-full sm:w-auto"
+              >
+                Join with code
+              </Button>
+            </div>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-3">
               <HeroMetric label="Rooms Total" value={String(rooms.length)} />
               <HeroMetric label="Hosted By You" value={String(ownedRooms)} />
               <HeroMetric label="Joined As Viewer" value={String(joinedRooms)} />
@@ -188,6 +255,12 @@ export function HomePage() {
               title="What stays local"
               text="The app never uploads the actual video file. SyncWatch only verifies local files and synchronizes the shared timeline."
             />
+            {latestRoom && (
+              <QuickNote
+                title="Latest room"
+                text={`${latestRoom.name} is ready to reopen with code ${latestRoom.room_code}.`}
+              />
+            )}
           </div>
         </div>
       </section>
@@ -217,6 +290,7 @@ export function HomePage() {
               variant="outline"
               padding="sm"
               className="rounded-[1.6rem] border-error/30 bg-error-container/30 text-error"
+              aria-live="polite"
             >
               <p className="text-sm">{error}</p>
             </Panel>
@@ -252,53 +326,62 @@ export function HomePage() {
       </section>
 
       <section className="mt-10 grid gap-6 xl:grid-cols-2">
-        <ActionCard
-          eyebrow="Host A Session"
-          title="Create a room"
-          description="Choose a room name, become the host and prepare the file reference everyone will match."
-          accent="solid"
-        >
-          <form onSubmit={handleCreate} className="space-y-5">
-            <Field label="Room Name">
-              <Input
-                type="text"
-                value={roomName}
-                onChange={(event) => setRoomName(event.target.value)}
-                placeholder="Movie Night"
-                required
-              />
-            </Field>
+        <div id="create-room">
+          <ActionCard
+            eyebrow="Host A Session"
+            title="Create a room"
+            description="Choose a room name, become the host and prepare the file reference everyone will match."
+            accent="solid"
+          >
+            <form onSubmit={handleCreate} className="space-y-5">
+              <Field label="Room Name" hint="You will land inside the room immediately as host.">
+                <Input
+                  type="text"
+                  value={roomName}
+                  onChange={(event) => setRoomName(event.target.value)}
+                  placeholder="Movie Night"
+                  autoComplete="off"
+                  required
+                />
+              </Field>
 
-            <Button type="submit" variant="primary" size="lg" fullWidth disabled={isCreating}>
-              {isCreating ? 'Creating...' : 'Create Room'}
-            </Button>
-          </form>
-        </ActionCard>
+              <Button type="submit" variant="primary" size="lg" fullWidth disabled={isCreating}>
+                {isCreating ? 'Creating...' : 'Create Room'}
+              </Button>
+            </form>
+          </ActionCard>
+        </div>
 
-        <ActionCard
-          eyebrow="Join Existing"
-          title="Enter a room code"
-          description="Paste the 8-character room code from the host and open the synchronized session immediately."
-          accent="outline"
-        >
-          <form onSubmit={handleJoin} className="space-y-5">
-            <Field label="Room Code">
-              <Input
-                type="text"
-                value={roomCode}
-                onChange={(event) => setRoomCode(event.target.value.toUpperCase())}
-                className="uppercase tracking-[0.22em]"
-                placeholder="AB12CD34"
-                maxLength={8}
-                required
-              />
-            </Field>
+        <div id="join-room">
+          <ActionCard
+            eyebrow="Join Existing"
+            title="Enter a room code"
+            description="Paste the 8-character room code from the host and open the synchronized session immediately."
+            accent="outline"
+          >
+            <form onSubmit={handleJoin} className="space-y-5">
+              <Field
+                label="Room Code"
+                hint="Codes are uppercase and work best when pasted exactly as shared."
+              >
+                <Input
+                  type="text"
+                  value={roomCode}
+                  onChange={(event) => setRoomCode(event.target.value.toUpperCase())}
+                  className="uppercase tracking-[0.22em]"
+                  placeholder="AB12CD34"
+                  autoComplete="off"
+                  maxLength={8}
+                  required
+                />
+              </Field>
 
-            <Button type="submit" variant="secondary" size="lg" fullWidth disabled={isJoining}>
-              {isJoining ? 'Joining...' : 'Join Room'}
-            </Button>
-          </form>
-        </ActionCard>
+              <Button type="submit" variant="secondary" size="lg" fullWidth disabled={isJoining}>
+                {isJoining ? 'Joining...' : 'Join Room'}
+              </Button>
+            </form>
+          </ActionCard>
+        </div>
       </section>
 
       <section className="mt-12">
@@ -324,7 +407,7 @@ export function HomePage() {
             {Array.from({ length: 3 }).map((_, index) => (
               <div
                 key={index}
-                className="h-52 animate-pulse rounded-[1.9rem] border border-outline-variant/15 bg-surface-container-low"
+                className="surface-skeleton h-56 rounded-[1.9rem] border border-outline-variant/15 bg-surface-container-low"
               />
             ))}
           </div>
@@ -334,14 +417,22 @@ export function HomePage() {
             <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-on-surface-variant">
               Start a hosted session or enter a shared code to see your recent room activity here.
             </p>
+            <div className="mt-5 flex flex-wrap justify-center gap-3">
+              <Button variant="primary" size="sm" onClick={() => scrollToSection('create-room')}>
+                Create a room
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => scrollToSection('join-room')}>
+                Join with code
+              </Button>
+            </div>
           </Panel>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {rooms.map((room) => {
+            {sortedRooms.map((room) => {
               const isHost = room.host_id === user?.id;
 
               return (
-                <div
+                <article
                   key={room.id}
                   className="group relative overflow-hidden rounded-[1.9rem] border border-outline-variant/15 bg-surface-container-low/78 p-5 text-left shadow-[0_18px_44px_rgba(0,0,0,0.24)] transition hover:-translate-y-1 hover:border-primary-container/30 hover:bg-surface-container"
                 >
@@ -352,7 +443,7 @@ export function HomePage() {
                         <p className="text-[10px] uppercase tracking-[0.22em] text-on-surface-variant">
                           Room
                         </p>
-                        <h3 className="mt-2 text-2xl font-black tracking-tight text-on-surface">
+                        <h3 className="mt-2 break-words text-2xl font-black tracking-tight text-on-surface">
                           {room.name}
                         </h3>
                       </div>
@@ -372,38 +463,80 @@ export function HomePage() {
                         </p>
                       </Panel>
 
-                      <div className="flex items-center justify-between px-1">
-                        <span>Created</span>
-                        <span>{new Date(room.created_at).toLocaleDateString()}</span>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Panel variant="muted" padding="sm" className="rounded-[1.2rem]">
+                          <p className="text-[10px] uppercase tracking-[0.18em] text-on-surface-variant">
+                            Access
+                          </p>
+                          <p className="mt-2 text-xs leading-6 text-on-surface-variant">
+                            {isHost ? 'You control playback for the whole room.' : 'The host keeps the shared timeline in sync.'}
+                          </p>
+                        </Panel>
+
+                        <Panel variant="muted" padding="sm" className="rounded-[1.2rem]">
+                          <p className="text-[10px] uppercase tracking-[0.18em] text-on-surface-variant">
+                            Created
+                          </p>
+                          <p className="mt-2 text-xs leading-6 text-on-surface">
+                            {new Date(room.created_at).toLocaleDateString()}
+                          </p>
+                        </Panel>
                       </div>
                     </div>
 
-                    <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-                      <button
+                    <div className="mt-6 flex flex-col gap-3">
+                      <Button
+                        variant="primary"
+                        size="sm"
                         onClick={() => navigate(`/room/${room.id}`)}
-                        className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-primary transition group-hover:text-white"
+                        leadingIcon={<ArrowUpRightIcon size={14} />}
+                        className="w-full sm:w-auto"
                       >
                         Open room
-                        <ArrowUpRightIcon size={14} />
-                      </button>
+                      </Button>
 
-                      {isHost && (
-                        <button
-                          onClick={() => void handleDelete(room.id)}
-                          className="text-[11px] font-bold uppercase tracking-[0.22em] text-error transition hover:text-on-surface"
+                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void handleCopyRoomCode(room.id, room.room_code)}
+                          leadingIcon={
+                            copiedRoomId === room.id ? (
+                              <CheckIcon size={14} />
+                            ) : (
+                              <CopyIcon size={14} />
+                            )
+                          }
                         >
-                          Delete
-                        </button>
-                      )}
+                          {copiedRoomId === room.id ? 'Copied' : 'Copy code'}
+                        </Button>
+
+                        {isHost && (
+                          <button
+                            onClick={() => void handleDelete(room.id)}
+                            className="text-[11px] font-bold uppercase tracking-[0.22em] text-error transition hover:text-on-surface"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
         )}
       </section>
     </Layout>
+  );
+}
+
+function HeroPill({ label }: { label: string }) {
+  return (
+    <span className="rounded-full border border-outline-variant/15 bg-black/18 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+      {label}
+    </span>
   );
 }
 

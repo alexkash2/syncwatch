@@ -4,6 +4,9 @@ import { leaveRoom } from '../api/rooms';
 import { VideoArea } from '../components/room/VideoArea';
 import { RoomHeader } from '../components/room/RoomHeader';
 import { RoomSidebar } from '../components/room/RoomSidebar';
+import { Button } from '../components/ui/Button';
+import { BrandMarkIcon } from '../components/ui/icons';
+import { StatePanel } from '../components/ui/StatePanel';
 import { useAuth } from '../hooks/useAuth';
 import { useLoadRoom } from '../hooks/useLoadRoom';
 import { useRoomWsHandler } from '../hooks/useRoomWsHandler';
@@ -56,12 +59,14 @@ export function RoomPage() {
   const [referenceFile, setReferenceFile] = useState<ReferenceFileState>(EMPTY_REFERENCE_FILE);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoReady, setVideoReady] = useState(false);
+  const [interactionHint, setInteractionHint] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSeqRef = useRef<number | null>(null);
   const fileVersionRef = useRef(0);
   const syncMessageRef = useRef<(message: SyncRelatedMessage) => void>(() => {});
   const fileUrlRef = useRef<string | null>(null);
+  const interactionHintTimerRef = useRef<number | null>(null);
 
   fileUrlRef.current = fileUrl;
 
@@ -100,7 +105,7 @@ export function RoomPage() {
     videoRef,
   });
 
-  const { send, isConnected } = useWebSocket({
+  const { send, isConnected, isReconnecting } = useWebSocket({
     roomId: roomId || '',
     onMessage: handleWsMessage,
     lastSeqRef,
@@ -116,6 +121,11 @@ export function RoomPage() {
       navigate('/', { state: { flash } });
     },
   });
+  const connectionState = isConnected
+    ? 'connected'
+    : isReconnecting
+    ? 'reconnecting'
+    : 'connecting';
 
   const { handleSyncMessage, autoplayBlocked, resumePlayback } = useVideoSync({
     videoRef,
@@ -164,8 +174,20 @@ export function RoomPage() {
     [send]
   );
 
+  const showInteractionHint = useCallback((message = 'Only the host can control playback.') => {
+    if (interactionHintTimerRef.current !== null) {
+      window.clearTimeout(interactionHintTimerRef.current);
+    }
+
+    setInteractionHint(message);
+    interactionHintTimerRef.current = window.setTimeout(() => {
+      setInteractionHint(null);
+    }, 2200);
+  }, []);
+
   const handleVideoClickToggle = useCallback(() => {
     if (room?.host_id !== user?.id) {
+      showInteractionHint();
       return;
     }
 
@@ -185,7 +207,7 @@ export function RoomPage() {
       send('pause', { current_time_ms: timeMs, file_version: fileVersion });
       setRoomStatus('paused');
     }
-  }, [fileVersion, room?.host_id, send, user?.id]);
+  }, [fileVersion, room?.host_id, send, showInteractionHint, user?.id]);
 
   const handlePlay = useCallback(
     (timeMs: number) => {
@@ -232,6 +254,9 @@ export function RoomPage() {
 
   useEffect(() => {
     return () => {
+      if (interactionHintTimerRef.current !== null) {
+        window.clearTimeout(interactionHintTimerRef.current);
+      }
       if (fileUrlRef.current) {
         URL.revokeObjectURL(fileUrlRef.current);
       }
@@ -243,14 +268,44 @@ export function RoomPage() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-surface">
-        <div className="text-on-surface-variant">Loading room...</div>
+      <div className="relative flex h-screen items-center justify-center overflow-hidden bg-surface px-4 text-on-surface">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(180,197,255,0.14),transparent_24%),linear-gradient(180deg,#090909_0%,#111111_45%,#151515_100%)]" />
+        </div>
+        <StatePanel
+          eyebrow="Preparing Room"
+          title="Loading the synced session"
+          description="Restoring room details, participant presence and recent chat before the player opens."
+          icon={<BrandMarkIcon size={26} />}
+          tone="primary"
+          className="relative z-10 w-full max-w-md"
+          aria-live="polite"
+        />
       </div>
     );
   }
 
   if (!room) {
-    return null;
+    return (
+      <div className="relative flex h-screen items-center justify-center overflow-hidden bg-surface px-4 text-on-surface">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(180,197,255,0.14),transparent_24%),linear-gradient(180deg,#090909_0%,#111111_45%,#151515_100%)]" />
+        </div>
+        <StatePanel
+          eyebrow="Room Unavailable"
+          title="This session is no longer open"
+          description="The room may have been removed, or your access to it has changed. You can safely return to the dashboard."
+          icon={<BrandMarkIcon size={26} />}
+          tone="warning"
+          className="relative z-10 w-full max-w-md"
+          actions={
+            <Button variant="primary" size="md" onClick={() => navigate('/')}>
+              Back to dashboard
+            </Button>
+          }
+        />
+      </div>
+    );
   }
 
   return (
@@ -264,7 +319,7 @@ export function RoomPage() {
         <RoomHeader
           roomName={room.name}
           roomCode={room.room_code}
-          isConnected={isConnected}
+          connectionState={connectionState}
           isHost={Boolean(isHost)}
           onLeave={handleLeave}
           onToggleSidebar={() => setSidebarOpen((current) => !current)}
@@ -277,7 +332,7 @@ export function RoomPage() {
               fileUrl={fileUrl}
               videoRef={videoRef}
               isHost={Boolean(isHost)}
-              isConnected={isConnected}
+              connectionState={connectionState}
               hostDisconnected={hostDisconnected}
               graceCountdown={graceCountdown}
               referenceFileName={referenceFile.fileName}
@@ -286,7 +341,9 @@ export function RoomPage() {
               readyParticipants={readyCount}
               totalParticipants={participants.length}
               autoplayBlocked={autoplayBlocked}
+              interactionHint={interactionHint}
               onResumePlayback={resumePlayback}
+              onNonHostControlAttempt={showInteractionHint}
               onFileVerified={handleFileVerified}
               onVerifyRequest={handleVerifyRequest}
               onVideoCanPlay={handleVideoCanPlay}
@@ -301,7 +358,7 @@ export function RoomPage() {
             <RoomSidebar
               roomName={room.name}
               roomCode={room.room_code}
-              isConnected={isConnected}
+              connectionState={connectionState}
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               sidebarOpen={sidebarOpen}

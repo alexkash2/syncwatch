@@ -72,21 +72,23 @@ export function RegisterPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Field label="Username">
+        <Field
+          label="Username"
+          hint="3-30 characters. Letters, digits, `_`, `.` and `-` are supported."
+        >
           <Input
             type="text"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
             placeholder="Choose a username"
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
             required
             minLength={3}
             maxLength={30}
           />
         </Field>
-
-        <p className="-mt-3 text-[11px] leading-6 text-on-surface-variant/70">
-          3-30 characters. Letters, digits, `_`, `.` and `-` are supported.
-        </p>
 
         <Field label="Email Address">
           <Input
@@ -94,21 +96,21 @@ export function RegisterPage() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@example.com"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
             required
           />
         </Field>
 
-        <p className="-mt-3 text-[11px] leading-6 text-on-surface-variant/70">
-          Password must be at least 8 characters.
-        </p>
-
         <div className="grid gap-6 md:grid-cols-2">
-          <Field label="Password">
+          <Field label="Password" hint="Password must be at least 8 characters.">
             <Input
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="At least 8 characters"
+              autoComplete="new-password"
               required
               minLength={8}
             />
@@ -120,6 +122,7 @@ export function RegisterPage() {
               value={confirm}
               onChange={(event) => setConfirm(event.target.value)}
               placeholder="Repeat the password"
+              autoComplete="new-password"
               required
             />
           </Field>
@@ -130,6 +133,7 @@ export function RegisterPage() {
             variant="outline"
             padding="sm"
             className="rounded-2xl border-error/30 bg-error-container/30 text-error"
+            aria-live="polite"
           >
             <p className="text-sm">{error}</p>
           </Panel>
@@ -138,6 +142,15 @@ export function RegisterPage() {
         <Button type="submit" variant="primary" size="lg" fullWidth disabled={loading}>
           {loading ? 'Creating...' : 'Create account'}
         </Button>
+
+        <Panel variant="muted" padding="sm" className="rounded-[1.6rem]">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
+            Shared timeline control
+          </p>
+          <p className="mt-2 text-xs leading-6 text-on-surface-variant">
+            After registration, you can create rooms, share a code and keep playback anchored to one timeline.
+          </p>
+        </Panel>
       </form>
     </AuthShell>
   );

@@ -176,7 +176,7 @@ export function FileSelector({
 
             {copy.note && (
               <Panel variant="outline" padding="sm" className="mt-5 rounded-2xl">
-                <p className="text-sm text-on-surface-variant">{copy.note}</p>
+                <p className="break-words text-sm text-on-surface-variant">{copy.note}</p>
               </Panel>
             )}
 
@@ -188,6 +188,7 @@ export function FileSelector({
                   onClick={() => inputRef.current?.click()}
                   disabled={status === 'hashing' || status === 'verifying'}
                   leadingIcon={<VideoIcon size={16} />}
+                  className="w-full sm:w-auto"
                 >
                   {status === 'idle' ? 'Choose Local Video' : 'Choose Another File'}
                 </Button>
@@ -325,7 +326,11 @@ function getSelectorCopy({
 }
 
 function StageTag({ label }: { label: string }) {
-  return <Badge tone="neutral">{label}</Badge>;
+  return (
+    <Badge tone="neutral" className="max-w-full">
+      <span className="truncate">{label}</span>
+    </Badge>
+  );
 }
 
 function StatusRow({
@@ -340,7 +345,11 @@ function StatusRow({
   return (
     <Panel variant="muted" padding="sm" className="rounded-2xl">
       <p className="text-[10px] uppercase tracking-[0.18em] text-on-surface-variant">{label}</p>
-      <p className={`mt-2 text-sm leading-6 ${accent ? 'text-primary' : 'text-on-surface'}`}>
+      <p
+        className={`mt-2 break-words text-sm leading-6 ${
+          accent ? 'text-primary' : 'text-on-surface'
+        }`}
+      >
         {value}
       </p>
     </Panel>

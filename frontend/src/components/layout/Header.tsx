@@ -12,10 +12,11 @@ export function Header() {
         <div className="flex min-w-0 items-center gap-3 md:gap-5">
           <Link
             to="/"
-            className="inline-flex h-11 items-center gap-3 rounded-full border border-primary-container/20 bg-primary-container/10 px-4 text-sm font-black uppercase tracking-[0.28em] text-primary shadow-[0_0_30px_rgba(0,98,255,0.12)] transition hover:border-primary-container/40 hover:text-white"
+            className="inline-flex h-11 items-center gap-2 rounded-full border border-primary-container/20 bg-primary-container/10 px-3 text-xs font-black uppercase tracking-[0.22em] text-primary shadow-[0_0_30px_rgba(0,98,255,0.12)] transition hover:border-primary-container/40 hover:text-white min-[390px]:gap-3 min-[390px]:px-4 min-[390px]:text-sm min-[390px]:tracking-[0.28em]"
+            aria-label="Go to SyncWatch home"
           >
             <BrandMarkIcon size={18} />
-            SyncWatch
+            <span className="hidden min-[390px]:inline">SyncWatch</span>
           </Link>
 
           <div className="hidden min-w-0 md:block">

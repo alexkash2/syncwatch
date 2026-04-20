@@ -3,10 +3,12 @@ import { ParticipantList } from './ParticipantList';
 import { RoomTabs } from './RoomTabs';
 import type { ChatMessage, WsParticipant } from '../../types/ws';
 
+type ConnectionState = 'connected' | 'connecting' | 'reconnecting';
+
 interface RoomSidebarProps {
   roomName: string;
   roomCode: string;
-  isConnected: boolean;
+  connectionState: ConnectionState;
   activeTab: 'chat' | 'participants';
   setActiveTab: (tab: 'chat' | 'participants') => void;
   sidebarOpen: boolean;
@@ -21,7 +23,7 @@ interface RoomSidebarProps {
 export function RoomSidebar({
   roomName,
   roomCode,
-  isConnected,
+  connectionState,
   activeTab,
   setActiveTab,
   sidebarOpen,
@@ -33,6 +35,7 @@ export function RoomSidebar({
   onSendChat,
 }: RoomSidebarProps) {
   const readyCount = participants.filter((participant) => participant.is_ready).length;
+  const connectionMeta = getConnectionMeta(connectionState);
 
   return (
     <>
@@ -40,17 +43,24 @@ export function RoomSidebar({
         <div
           className="fixed inset-0 bg-black/55 backdrop-blur-sm z-40 md:hidden"
           onClick={closeSidebar}
+          aria-hidden="true"
         />
       )}
 
       <aside
+        aria-label="Room sidebar"
+        aria-labelledby="room-sidebar-title"
         className={`
           fixed right-3 top-[4.75rem] bottom-3 z-50 w-[min(100vw-1.5rem,24rem)] rounded-[1.75rem]
-          transition-transform duration-300 md:static md:top-auto md:bottom-auto md:right-auto
+          transition-all duration-300 md:static md:top-auto md:bottom-auto md:right-auto
           md:z-auto md:w-[22rem] md:translate-x-0
-          ${sidebarOpen ? 'translate-x-0' : 'translate-x-[110%] md:translate-x-0'}
+          ${
+            sidebarOpen
+              ? 'translate-x-0 opacity-100'
+              : 'translate-x-[110%] opacity-0 pointer-events-none md:pointer-events-auto md:translate-x-0 md:opacity-100'
+          }
           border border-outline-variant/15 bg-surface-container-low/82 shadow-[0_28px_80px_rgba(0,0,0,0.34)] backdrop-blur-2xl
-          flex flex-col shrink-0
+          flex flex-col shrink-0 overflow-hidden
         `}
       >
         <div className="p-5 border-b border-outline-variant/10 shrink-0">
@@ -59,24 +69,33 @@ export function RoomSidebar({
               <div className="mb-2 flex items-center gap-3">
                 <div
                   className={`h-2 w-2 rounded-full ${
-                    isConnected
+                    connectionState === 'connected'
                       ? 'bg-primary-container shadow-[0_0_8px_#0062ff]'
+                      : connectionState === 'reconnecting'
+                      ? 'bg-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.55)]'
                       : 'bg-outline-variant'
                   }`}
                 />
                 <span className="text-[10px] uppercase tracking-[0.18em] text-on-surface-variant">
-                  {isConnected ? 'Sync Active' : 'Reconnecting'}
+                  {connectionMeta.eyebrow}
                 </span>
               </div>
-              <h3 className="text-lg font-black tracking-tight text-on-surface">{roomName}</h3>
+              <h3 id="room-sidebar-title" className="text-lg font-black tracking-tight text-on-surface">
+                {roomName}
+              </h3>
               <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-primary">
                 {roomCode}
+              </p>
+              <p className="mt-3 text-sm leading-6 text-on-surface-variant">
+                {connectionMeta.description}
               </p>
             </div>
 
             <button
+              type="button"
               onClick={closeSidebar}
               className="rounded-full border border-outline-variant/15 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-on-surface-variant transition hover:border-primary-container/40 hover:text-on-surface md:hidden"
+              aria-label="Close room sidebar"
             >
               Close
             </button>
@@ -94,7 +113,12 @@ export function RoomSidebar({
           participantsCount={participants.length}
         />
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div
+          className="flex-1 overflow-hidden flex flex-col"
+          role="tabpanel"
+          id={activeTab === 'chat' ? 'room-tabpanel-chat' : 'room-tabpanel-participants'}
+          aria-labelledby={activeTab === 'chat' ? 'room-tab-chat' : 'room-tab-participants'}
+        >
           {activeTab === 'chat' ? (
             <ChatPanel
               messages={messages}
@@ -112,6 +136,26 @@ export function RoomSidebar({
       </aside>
     </>
   );
+}
+
+function getConnectionMeta(connectionState: ConnectionState) {
+  switch (connectionState) {
+    case 'connected':
+      return {
+        eyebrow: 'Sync Active',
+        description: 'Realtime playback, file status and chat are currently connected.',
+      };
+    case 'reconnecting':
+      return {
+        eyebrow: 'Reconnecting',
+        description: 'The room is trying to restore the websocket session without dropping local state.',
+      };
+    default:
+      return {
+        eyebrow: 'Connecting',
+        description: 'Opening the live room channel and preparing the realtime session.',
+      };
+  }
 }
 
 function SidebarStat({ label, value }: { label: string; value: string }) {

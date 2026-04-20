@@ -23,7 +23,7 @@ export function NotFoundPage() {
                 <BrandMarkIcon size={14} />
                 Lost Route
               </Badge>
-              <h1 className="text-[6rem] font-black leading-none tracking-[-0.08em] text-on-surface md:text-[9rem] xl:text-[11rem]">
+              <h1 className="text-[4.75rem] font-black leading-none tracking-[-0.08em] text-on-surface sm:text-[6rem] md:text-[9rem] xl:text-[11rem]">
                 404
               </h1>
               <h2 className="mt-3 text-3xl font-black tracking-tight text-on-surface md:text-4xl">

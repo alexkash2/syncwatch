@@ -71,6 +71,9 @@ export function LoginPage() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@example.com"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
             required
           />
         </Field>
@@ -81,6 +84,7 @@ export function LoginPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Enter your password"
+            autoComplete="current-password"
             required
           />
         </Field>
@@ -90,6 +94,7 @@ export function LoginPage() {
             variant="outline"
             padding="sm"
             className="rounded-2xl border-error/30 bg-error-container/30 text-error"
+            aria-live="polite"
           >
             <p className="text-sm">{error}</p>
           </Panel>
@@ -98,6 +103,15 @@ export function LoginPage() {
         <Button type="submit" variant="primary" size="lg" fullWidth disabled={loading}>
           {loading ? 'Logging in...' : 'Log in'}
         </Button>
+
+        <Panel variant="muted" padding="sm" className="rounded-[1.6rem]">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
+            Local-first playback
+          </p>
+          <p className="mt-2 text-xs leading-6 text-on-surface-variant">
+            The session opens on this device only, and the room state syncs from there.
+          </p>
+        </Panel>
       </form>
     </AuthShell>
   );

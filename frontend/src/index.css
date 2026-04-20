@@ -27,10 +27,24 @@ body {
   font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 button,
 input,
 textarea {
   font: inherit;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[role="tab"]:focus-visible {
+  outline: 2px solid rgba(180, 197, 255, 0.92);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(0, 98, 255, 0.18);
 }
 
 ::selection {
@@ -49,4 +63,47 @@ h6 {
 
 #root {
   min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes surface-sheen {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+.surface-skeleton {
+  position: relative;
+  overflow: hidden;
+}
+
+.surface-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 45%,
+    transparent 100%
+  );
+  animation: surface-sheen 1.8s ease-in-out infinite;
 }

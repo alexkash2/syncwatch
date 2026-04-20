@@ -10,7 +10,7 @@ interface VideoAreaProps {
   roomStatus: RoomStatus;
   fileUrl: string | null;
   isHost: boolean;
-  isConnected: boolean;
+  connectionState: 'connected' | 'connecting' | 'reconnecting';
   hostDisconnected: boolean;
   graceCountdown: number;
   referenceFileName: string | null;
@@ -19,7 +19,9 @@ interface VideoAreaProps {
   readyParticipants: number;
   totalParticipants: number;
   autoplayBlocked: boolean;
+  interactionHint: string | null;
   onResumePlayback: () => void;
+  onNonHostControlAttempt: () => void;
   onVideoCanPlay: () => void;
   onVideoError: (errorCode: string) => void;
   onVideoClickToggle: () => void;
@@ -36,7 +38,7 @@ export function VideoArea({
   roomStatus,
   fileUrl,
   isHost,
-  isConnected,
+  connectionState,
   hostDisconnected,
   graceCountdown,
   referenceFileName,
@@ -45,7 +47,9 @@ export function VideoArea({
   readyParticipants,
   totalParticipants,
   autoplayBlocked,
+  interactionHint,
   onResumePlayback,
+  onNonHostControlAttempt,
   onVideoCanPlay,
   onVideoError,
   onVideoClickToggle,
@@ -57,6 +61,7 @@ export function VideoArea({
   verifyResult,
 }: VideoAreaProps) {
   const statusMeta = getRoomStatusMeta(roomStatus, isHost);
+  const connectionMeta = getConnectionMeta(connectionState);
   const everyoneReady = totalParticipants > 0 && readyParticipants === totalParticipants;
 
   return (
@@ -70,7 +75,7 @@ export function VideoArea({
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip label={isHost ? 'Host Control' : 'Viewer'} tone="neutral" />
           <StatusChip label={statusMeta.label} tone={statusMeta.tone} />
-          <StatusChip label={isConnected ? 'Connected' : 'Reconnecting'} tone={isConnected ? 'success' : 'neutral'} />
+          <StatusChip label={connectionMeta.label} tone={connectionMeta.tone} />
           {referenceFileName && <StatusChip label={truncateLabel(referenceFileName)} tone="neutral" />}
         </div>
 
@@ -128,11 +133,23 @@ export function VideoArea({
                       }
                     />
                   )}
+
+                  {everyoneReady && (
+                    <FloatingPanel
+                      title="Everyone is ready"
+                      description={
+                        isHost
+                          ? 'The room is ready for playback. Start whenever you want.'
+                          : 'Everyone matched the file. Playback will stay locked to the shared host timeline.'
+                      }
+                    />
+                  )}
                 </div>
 
-                {!isConnected && (
+                {connectionState !== 'connected' && (
                   <div className="inline-flex w-fit items-center gap-2 rounded-full border border-outline-variant/20 bg-black/55 px-4 py-2 text-xs text-on-surface-variant backdrop-blur-xl">
-                    Reconnecting to room...
+                    <span className={`h-2 w-2 rounded-full ${connectionMeta.dotClass}`} />
+                    {connectionMeta.helper}
                   </div>
                 )}
               </div>
@@ -156,6 +173,14 @@ export function VideoArea({
                   </div>
                 </div>
               )}
+
+              {interactionHint && (
+                <div className="pointer-events-none absolute inset-x-4 bottom-18 z-30 flex justify-center md:inset-x-6 md:bottom-22">
+                  <div className="rounded-full border border-primary-container/20 bg-black/66 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-primary backdrop-blur-xl">
+                    {interactionHint}
+                  </div>
+                </div>
+              )}
             </div>
 
             <PlaybackControls
@@ -165,6 +190,7 @@ export function VideoArea({
               onPause={onPause}
               onSeek={onSeek}
               videoReady
+              onNonHostControlAttempt={onNonHostControlAttempt}
             />
           </>
         ) : (
@@ -265,6 +291,32 @@ function getRoomStatusMeta(roomStatus: RoomStatus, isHost: boolean) {
         label: 'Host reconnecting',
         tone: 'warning' as const,
         description: 'The room is holding state while the host connection recovers.',
+      };
+  }
+}
+
+function getConnectionMeta(connectionState: 'connected' | 'connecting' | 'reconnecting') {
+  switch (connectionState) {
+    case 'connected':
+      return {
+        label: 'Connected',
+        tone: 'success' as const,
+        helper: 'Realtime room link is healthy.',
+        dotClass: 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.65)]',
+      };
+    case 'reconnecting':
+      return {
+        label: 'Reconnecting',
+        tone: 'warning' as const,
+        helper: 'Reconnecting to the room without resetting local playback.',
+        dotClass: 'bg-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.55)]',
+      };
+    default:
+      return {
+        label: 'Connecting',
+        tone: 'neutral' as const,
+        helper: 'Opening the live room channel...',
+        dotClass: 'bg-on-surface-variant/60',
       };
   }
 }
