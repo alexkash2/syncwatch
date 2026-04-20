@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { AuthShell } from '../components/auth/AuthShell';
 import { Button } from '../components/ui/Button';
@@ -6,16 +6,35 @@ import { Field } from '../components/ui/Field';
 import { Input } from '../components/ui/Input';
 import { Panel } from '../components/ui/Panel';
 import { useAuth } from '../hooks/useAuth';
+import { useUi } from '../hooks/useUi';
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { pushToast } = useUi();
   const flashMessage = (location.state as { flash?: string } | null)?.flash;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!flashMessage) {
+      return;
+    }
+
+    pushToast({
+      tone: 'success',
+      title: 'Account created',
+      description: flashMessage,
+      durationMs: 4200,
+    });
+    navigate(location.pathname, {
+      replace: true,
+      state: null,
+    });
+  }, [flashMessage, location.pathname, navigate, pushToast]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -55,16 +74,6 @@ export function LoginPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {flashMessage && (
-          <Panel
-            variant="outline"
-            padding="sm"
-            className="rounded-2xl border-primary-container/35 bg-primary-container/16"
-          >
-            <p className="text-sm text-primary">{flashMessage}</p>
-          </Panel>
-        )}
-
         <Field label="Email Address">
           <Input
             type="email"

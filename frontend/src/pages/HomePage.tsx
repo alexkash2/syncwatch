@@ -16,28 +16,32 @@ import { Field } from '../components/ui/Field';
 import { Input } from '../components/ui/Input';
 import {
   ArrowUpRightIcon,
+  BrandMarkIcon,
   ChatBubbleIcon,
   CheckIcon,
   CopyIcon,
   RefreshIcon,
   UsersIcon,
   VideoIcon,
+  WarningCircleIcon,
 } from '../components/ui/icons';
 import { Panel } from '../components/ui/Panel';
+import { StatePanel } from '../components/ui/StatePanel';
+import { useUi } from '../hooks/useUi';
 import { useAuth } from '../hooks/useAuth';
+import type { HomeArrivalNotice, HomeLocationState } from '../types/navigation';
 import type { Room } from '../types/room';
 
 export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { confirm, pushToast } = useUi();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomName, setRoomName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
-  const [flash, setFlash] = useState<string | null>(
-    (location.state as { flash?: string } | null)?.flash ?? null
-  );
+  const [arrivalNotice, setArrivalNotice] = useState<HomeArrivalNotice | null>(null);
   const [roomsError, setRoomsError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
@@ -46,22 +50,27 @@ export function HomePage() {
   const copyTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (location.state && (location.state as { flash?: string }).flash) {
-      navigate(location.pathname + location.search, {
-        replace: true,
-        state: null,
-      });
-    }
-  }, [location.pathname, location.search, location.state, navigate]);
-
-  useEffect(() => {
-    if (!flash) {
+    const routeState = (location.state as HomeLocationState | null) ?? null;
+    if (!routeState?.arrivalNotice && !routeState?.flash) {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => setFlash(null), 6000);
-    return () => window.clearTimeout(timeoutId);
-  }, [flash]);
+    if (routeState.arrivalNotice) {
+      setArrivalNotice(routeState.arrivalNotice);
+    } else if (routeState.flash) {
+      pushToast({
+        tone: 'primary',
+        title: 'Room update',
+        description: routeState.flash,
+        durationMs: 4200,
+      });
+    }
+
+    navigate(location.pathname + location.search, {
+      replace: true,
+      state: null,
+    });
+  }, [location.pathname, location.search, location.state, navigate, pushToast]);
 
   useEffect(() => {
     return () => {
@@ -151,7 +160,17 @@ export function HomePage() {
 
   const handleDelete = useCallback(
     async (roomId: string) => {
-      if (!window.confirm('Delete this room? All participants will be disconnected.')) {
+      const confirmed = await confirm({
+        eyebrow: 'Delete Room',
+        title: 'Close this synced room?',
+        description:
+          'Everyone inside will be disconnected and the room will disappear from recent activity.',
+        confirmLabel: 'Delete room',
+        cancelLabel: 'Keep room',
+        tone: 'danger',
+      });
+
+      if (!confirmed) {
         return;
       }
 
@@ -159,16 +178,25 @@ export function HomePage() {
 
       try {
         await deleteRoom(roomId);
-        setFlash('Room deleted.');
+        pushToast({
+          tone: 'success',
+          title: 'Room deleted',
+          description: 'The room was closed and removed from your dashboard.',
+        });
         await fetchRooms();
       } catch (err: unknown) {
-        setError(
+        const message =
           (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ||
-            'Failed to delete room'
-        );
+          'Failed to delete room';
+        setError(message);
+        pushToast({
+          tone: 'danger',
+          title: 'Could not delete room',
+          description: message,
+        });
       }
     },
-    [fetchRooms]
+    [confirm, fetchRooms, pushToast]
   );
 
   const handleCopyRoomCode = useCallback(async (roomId: string, roomCode: string) => {
@@ -179,13 +207,25 @@ export function HomePage() {
     try {
       await navigator.clipboard.writeText(roomCode);
       setCopiedRoomId(roomId);
+      pushToast({
+        tone: 'success',
+        title: 'Room code copied',
+        description: `${roomCode} is ready to share with the group.`,
+        durationMs: 2600,
+      });
       copyTimerRef.current = window.setTimeout(() => {
         setCopiedRoomId(null);
       }, 1800);
     } catch {
-      setError('Could not copy the room code in this browser.');
+      const message = 'Could not copy the room code in this browser.';
+      setError(message);
+      pushToast({
+        tone: 'warning',
+        title: 'Copy unavailable',
+        description: message,
+      });
     }
-  }, []);
+  }, [pushToast]);
 
   const scrollToSection = useCallback((sectionId: string) => {
     document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -193,6 +233,18 @@ export function HomePage() {
 
   return (
     <Layout>
+      {arrivalNotice && (
+        <section className="mb-8">
+          <HomeArrivalPanel
+            notice={arrivalNotice}
+            onDismiss={() => setArrivalNotice(null)}
+            onCreateRoom={() => scrollToSection('create-room')}
+            onJoinRoom={() => scrollToSection('join-room')}
+            onReviewRooms={() => scrollToSection('recent-rooms')}
+          />
+        </section>
+      )}
+
       <section className="relative overflow-hidden rounded-[2.4rem] border border-outline-variant/18 bg-surface-container-low/78 px-5 py-7 shadow-[0_32px_90px_rgba(0,0,0,0.3)] sm:px-6 md:px-10 md:py-12 xl:px-12">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,98,255,0.18),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0.05),transparent_40%)]" />
@@ -265,26 +317,8 @@ export function HomePage() {
         </div>
       </section>
 
-      {(flash || error || roomsError) && (
+      {(error || roomsError) && (
         <div className="mt-8 space-y-3">
-          {flash && (
-            <Panel
-              variant="outline"
-              padding="sm"
-              className="rounded-[1.6rem] border-primary-container/35 bg-primary-container/16"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <p className="text-sm text-primary">{flash}</p>
-                <button
-                  onClick={() => setFlash(null)}
-                  className="text-xs uppercase tracking-[0.18em] text-on-surface-variant transition hover:text-on-surface"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </Panel>
-          )}
-
           {error && (
             <Panel
               variant="outline"
@@ -384,7 +418,7 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="mt-12">
+      <section id="recent-rooms" className="mt-12">
         <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <Badge tone="primary">Your Rooms</Badge>
@@ -538,6 +572,102 @@ function HeroPill({ label }: { label: string }) {
       {label}
     </span>
   );
+}
+
+function HomeArrivalPanel({
+  notice,
+  onDismiss,
+  onCreateRoom,
+  onJoinRoom,
+  onReviewRooms,
+}: {
+  notice: HomeArrivalNotice;
+  onDismiss: () => void;
+  onCreateRoom: () => void;
+  onJoinRoom: () => void;
+  onReviewRooms: () => void;
+}) {
+  const meta = getArrivalMeta(notice);
+  const primaryAction =
+    notice.key === 'access_lost' || notice.key === 'room_not_found'
+      ? {
+          label: 'Join with code',
+          onClick: onJoinRoom,
+          variant: 'secondary' as const,
+        }
+      : notice.key === 'tab_replaced'
+      ? {
+          label: 'Review recent rooms',
+          onClick: onReviewRooms,
+          variant: 'primary' as const,
+        }
+      : {
+          label: 'Create a room',
+          onClick: onCreateRoom,
+          variant: 'primary' as const,
+        };
+
+  return (
+    <StatePanel
+      eyebrow={notice.eyebrow}
+      title={notice.title}
+      description={notice.description}
+      tone={notice.tone}
+      align="left"
+      icon={meta.icon}
+      className={`relative overflow-hidden rounded-[2.1rem] border px-1 ${meta.panelClass}`}
+      actions={
+        <>
+          <Button variant={primaryAction.variant} size="sm" onClick={primaryAction.onClick}>
+            {primaryAction.label}
+          </Button>
+          {notice.key !== 'tab_replaced' && (
+            <Button variant="ghost" size="sm" onClick={onReviewRooms}>
+              Review recent rooms
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={onDismiss}>
+            Dismiss
+          </Button>
+        </>
+      }
+    />
+  );
+}
+
+function getArrivalMeta(notice: HomeArrivalNotice): {
+  icon: ReactNode;
+  panelClass: string;
+} {
+  if (notice.key === 'tab_replaced') {
+    return {
+      icon: <RefreshIcon size={22} className="animate-spin [animation-duration:3s]" />,
+      panelClass:
+        'border-primary-container/26 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))]',
+    };
+  }
+
+  if (notice.tone === 'danger') {
+    return {
+      icon: <WarningCircleIcon size={22} />,
+      panelClass:
+        'border-error/24 bg-[radial-gradient(circle_at_top_left,rgba(255,120,100,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]',
+    };
+  }
+
+  if (notice.tone === 'warning') {
+    return {
+      icon: <WarningCircleIcon size={22} />,
+      panelClass:
+        'border-amber-300/22 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]',
+    };
+  }
+
+  return {
+    icon: <BrandMarkIcon size={22} />,
+    panelClass:
+      'border-primary-container/26 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))]',
+  };
 }
 
 function HeroMetric({ label, value }: { label: string; value: string }) {

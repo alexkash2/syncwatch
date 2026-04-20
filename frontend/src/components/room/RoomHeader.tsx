@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { BrandMarkIcon, CheckIcon, CopyIcon, LayoutPanelIcon } from '../ui/icons';
+import { useUi } from '../../hooks/useUi';
 
 type ConnectionState = 'connected' | 'connecting' | 'reconnecting';
 
@@ -11,6 +12,7 @@ interface RoomHeaderProps {
   roomCode: string;
   connectionState: ConnectionState;
   isHost: boolean;
+  sidebarOpen: boolean;
   onLeave: () => void;
   onToggleSidebar: () => void;
 }
@@ -20,11 +22,13 @@ export function RoomHeader({
   roomCode,
   connectionState,
   isHost,
+  sidebarOpen,
   onLeave,
   onToggleSidebar,
 }: RoomHeaderProps) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const copyTimerRef = useRef<number | null>(null);
+  const { pushToast } = useUi();
 
   useEffect(() => {
     return () => {
@@ -44,8 +48,19 @@ export function RoomHeader({
     try {
       await navigator.clipboard.writeText(roomCode);
       setCopyState('copied');
+      pushToast({
+        tone: 'success',
+        title: 'Room code copied',
+        description: `${roomCode} is ready to send to anyone joining.`,
+        durationMs: 2400,
+      });
     } catch {
       setCopyState('failed');
+      pushToast({
+        tone: 'warning',
+        title: 'Copy unavailable',
+        description: 'Clipboard access is blocked in this browser right now.',
+      });
     }
 
     copyTimerRef.current = window.setTimeout(() => {
@@ -110,7 +125,9 @@ export function RoomHeader({
           onClick={onToggleSidebar}
           className="md:hidden"
           leadingIcon={<LayoutPanelIcon size={15} />}
-          aria-label="Open room sidebar"
+          aria-label={sidebarOpen ? 'Close room sidebar' : 'Open room sidebar'}
+          aria-controls="room-sidebar-panel"
+          aria-expanded={sidebarOpen}
         >
           <span className="hidden min-[390px]:inline">Panel</span>
         </Button>

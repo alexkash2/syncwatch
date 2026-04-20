@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import type { NavigateFunction } from 'react-router';
+import { getHomeArrivalNotice } from '../types/navigation';
 import type {
   ChatMessage,
   FileVerifyResult,
@@ -194,14 +195,15 @@ export function useRoomWsHandler({
           clearGraceTimer();
           navigate('/', {
             state: {
-              flash:
+              arrivalNotice: getHomeArrivalNotice(
                 msg.reason === 'host_left'
-                  ? 'The host left the room.'
+                  ? 'room_closed_host_left'
                   : msg.reason === 'host_timeout'
-                  ? 'The host lost connection and did not return in time.'
+                  ? 'room_closed_host_timeout'
                   : msg.reason === 'deleted'
-                  ? 'The room was deleted by the host.'
-                  : 'The room was closed.',
+                  ? 'room_closed_deleted'
+                  : 'room_closed_generic'
+              ),
             },
           });
           break;
@@ -221,11 +223,11 @@ export function useRoomWsHandler({
           if (msg.code === 'tab_replaced') {
             navigate('/', {
               state: {
-                flash: 'You opened this room in another tab. This session was closed.',
+                arrivalNotice: getHomeArrivalNotice('tab_replaced'),
               },
             });
           } else if (msg.code === 'room_gone') {
-            navigate('/', { state: { flash: 'The room no longer exists.' } });
+            navigate('/', { state: { arrivalNotice: getHomeArrivalNotice('room_not_found') } });
           }
           break;
 

@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef } from 'react';
+import { forwardRef, type ComponentPropsWithoutRef } from 'react';
 import { cn } from './cn';
 
 type PanelVariant = 'default' | 'muted' | 'glass' | 'outline' | 'dashed';
@@ -24,15 +24,19 @@ const paddingClasses = {
   lg: 'p-6 md:p-8',
 } as const;
 
-export function Panel({
-  variant = 'default',
-  padding = 'md',
-  className,
-  children,
-  ...props
-}: PanelProps) {
+export const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
+  {
+    variant = 'default',
+    padding = 'md',
+    className,
+    children,
+    ...props
+  },
+  ref
+) {
   return (
     <div
+      ref={ref}
       className={cn(
         'rounded-[1.8rem]',
         panelVariantClasses[variant],
@@ -44,4 +48,4 @@ export function Panel({
       {children}
     </div>
   );
-}
+});

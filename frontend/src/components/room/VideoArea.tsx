@@ -1,4 +1,5 @@
 import { Button } from '../ui/Button';
+import { CheckIcon, RefreshIcon, WarningCircleIcon } from '../ui/icons';
 import { FileSelector } from './FileSelector';
 import { HostDisconnectOverlay } from './HostDisconnectOverlay';
 import { PlaybackControls } from './PlaybackControls';
@@ -20,6 +21,11 @@ interface VideoAreaProps {
   totalParticipants: number;
   autoplayBlocked: boolean;
   interactionHint: string | null;
+  sessionNotice: {
+    tone: 'warning' | 'success';
+    title: string;
+    description: string;
+  } | null;
   onResumePlayback: () => void;
   onNonHostControlAttempt: () => void;
   onVideoCanPlay: () => void;
@@ -48,6 +54,7 @@ export function VideoArea({
   totalParticipants,
   autoplayBlocked,
   interactionHint,
+  sessionNotice,
   onResumePlayback,
   onNonHostControlAttempt,
   onVideoCanPlay,
@@ -86,6 +93,16 @@ export function VideoArea({
       </div>
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        {sessionNotice && (
+          <div className="relative z-20 px-4 pt-4 md:px-6">
+            <SessionBanner
+              tone={sessionNotice.tone}
+              title={sessionNotice.title}
+              description={sessionNotice.description}
+            />
+          </div>
+        )}
+
         {fileUrl ? (
           <>
             <div className="relative min-h-0 flex-1">
@@ -226,6 +243,66 @@ function PlayerAlert({ title, description }: { title: string; description: strin
         <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-error">Player State</p>
         <h3 className="mt-3 text-2xl font-black tracking-tight text-on-surface">{title}</h3>
         <p className="mt-3 text-sm leading-7 text-on-surface-variant">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function SessionBanner({
+  tone,
+  title,
+  description,
+}: {
+  tone: 'warning' | 'success';
+  title: string;
+  description: string;
+}) {
+  const meta =
+    tone === 'success'
+      ? {
+          wrapperClass:
+            'border-emerald-400/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.16),rgba(0,0,0,0.45))] text-emerald-50',
+          iconClass: 'border-emerald-300/20 bg-emerald-400/14 text-emerald-200',
+          eyebrow: 'Recovered',
+          icon: <CheckIcon size={18} />,
+        }
+      : {
+          wrapperClass:
+            'border-amber-300/24 bg-[linear-gradient(135deg,rgba(251,191,36,0.16),rgba(0,0,0,0.48))] text-amber-50',
+          iconClass: 'border-amber-200/22 bg-amber-300/12 text-amber-100',
+          eyebrow: 'Session Link',
+          icon: <RefreshIcon size={18} className="animate-spin [animation-duration:2.6s]" />,
+        };
+
+  return (
+    <div
+      className={`rounded-[1.6rem] border px-4 py-4 shadow-[0_22px_52px_rgba(0,0,0,0.3)] backdrop-blur-xl md:px-5 ${meta.wrapperClass}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-start gap-3">
+          <span
+            className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[1rem] border ${meta.iconClass}`}
+          >
+            {meta.icon}
+          </span>
+
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-current/80">
+              {meta.eyebrow}
+            </p>
+            <h3 className="mt-2 text-lg font-black tracking-tight text-on-surface">{title}</h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-on-surface-variant">
+              {description}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-current/80">
+          <WarningCircleIcon size={14} />
+          <span>{tone === 'success' ? 'Room synced' : 'Holding playback state'}</span>
+        </div>
       </div>
     </div>
   );

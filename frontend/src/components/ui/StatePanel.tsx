@@ -2,7 +2,7 @@ import type { ComponentPropsWithoutRef, ReactNode } from 'react';
 import { cn } from './cn';
 import { Panel } from './Panel';
 
-type StateTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
+export type StateTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
 
 const iconToneClasses: Record<StateTone, string> = {
   neutral: 'border-outline-variant/18 bg-black/24 text-on-surface-variant',

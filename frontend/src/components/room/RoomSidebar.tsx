@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { ChatPanel } from './ChatPanel';
 import { ParticipantList } from './ParticipantList';
 import { RoomTabs } from './RoomTabs';
@@ -36,6 +37,24 @@ export function RoomSidebar({
 }: RoomSidebarProps) {
   const readyCount = participants.filter((participant) => participant.is_ready).length;
   const connectionMeta = getConnectionMeta(connectionState);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!sidebarOpen) {
+      return;
+    }
+
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeSidebar();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [closeSidebar, sidebarOpen]);
 
   return (
     <>
@@ -48,6 +67,7 @@ export function RoomSidebar({
       )}
 
       <aside
+        id="room-sidebar-panel"
         aria-label="Room sidebar"
         aria-labelledby="room-sidebar-title"
         className={`
@@ -92,6 +112,7 @@ export function RoomSidebar({
             </div>
 
             <button
+              ref={closeButtonRef}
               type="button"
               onClick={closeSidebar}
               className="rounded-full border border-outline-variant/15 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-on-surface-variant transition hover:border-primary-container/40 hover:text-on-surface md:hidden"

@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from 'react';
+import { useRef, type KeyboardEvent } from 'react';
 import { ChatBubbleIcon, UsersIcon } from '../ui/icons';
 
 interface RoomTabsProps {
@@ -9,34 +9,46 @@ interface RoomTabsProps {
 
 export function RoomTabs({ activeTab, setActiveTab, participantsCount }: RoomTabsProps) {
   const orderedTabs = ['chat', 'participants'] as const;
+  const chatTabRef = useRef<HTMLButtonElement>(null);
+  const participantsTabRef = useRef<HTMLButtonElement>(null);
+
+  const focusTab = (tab: 'chat' | 'participants') => {
+    setActiveTab(tab);
+    if (tab === 'chat') {
+      chatTabRef.current?.focus();
+    } else {
+      participantsTabRef.current?.focus();
+    }
+  };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, tab: 'chat' | 'participants') => {
     const currentIndex = orderedTabs.indexOf(tab);
 
     if (event.key === 'ArrowRight') {
       event.preventDefault();
-      setActiveTab(orderedTabs[(currentIndex + 1) % orderedTabs.length]);
+      focusTab(orderedTabs[(currentIndex + 1) % orderedTabs.length]);
     }
 
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      setActiveTab(orderedTabs[(currentIndex - 1 + orderedTabs.length) % orderedTabs.length]);
+      focusTab(orderedTabs[(currentIndex - 1 + orderedTabs.length) % orderedTabs.length]);
     }
 
     if (event.key === 'Home') {
       event.preventDefault();
-      setActiveTab(orderedTabs[0]);
+      focusTab(orderedTabs[0]);
     }
 
     if (event.key === 'End') {
       event.preventDefault();
-      setActiveTab(orderedTabs[orderedTabs.length - 1]);
+      focusTab(orderedTabs[orderedTabs.length - 1]);
     }
   };
 
   return (
     <div className="flex shrink-0 gap-2 px-3 py-3" role="tablist" aria-label="Room sidebar tabs">
       <button
+        ref={chatTabRef}
         type="button"
         id="room-tab-chat"
         role="tab"
@@ -56,6 +68,7 @@ export function RoomTabs({ activeTab, setActiveTab, participantsCount }: RoomTab
       </button>
 
       <button
+        ref={participantsTabRef}
         type="button"
         id="room-tab-participants"
         role="tab"

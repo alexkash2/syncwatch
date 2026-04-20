@@ -4,8 +4,18 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ReactNode,
   type RefObject,
 } from 'react';
+import {
+  ForwardIcon,
+  FullscreenIcon,
+  KeyboardIcon,
+  PauseIcon,
+  PlayIcon,
+  RewindIcon,
+  VolumeIcon,
+} from '../ui/icons';
 
 interface PlaybackControlsProps {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -18,6 +28,7 @@ interface PlaybackControlsProps {
 }
 
 const SKIP_SECONDS = 5;
+const PLAYBACK_ACCESS_NOTE_ID = 'playback-access-note';
 
 export function PlaybackControls({
   videoRef,
@@ -229,8 +240,33 @@ export function PlaybackControls({
   };
 
   return (
-    <div className="shrink-0 border-t border-outline-variant/20 bg-surface-container/60 px-4 py-3 backdrop-blur-2xl md:px-12 md:py-4">
-      <div className="mb-3 w-full">
+    <div className="shrink-0 border-t border-outline-variant/20 bg-surface-container/60 px-4 py-4 backdrop-blur-2xl md:px-8 md:py-5 xl:px-12">
+      <p id={PLAYBACK_ACCESS_NOTE_ID} className="sr-only">
+        {isHost
+          ? 'You control playback for the room. Space toggles play, arrow keys seek, and F toggles fullscreen.'
+          : 'Playback controls are locked for viewers. Only the host can change the shared timeline.'}
+      </p>
+
+      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Playback status">
+          <StatusPill
+            tone={isHost ? 'primary' : 'neutral'}
+            label={isHost ? 'Host controls live' : 'Viewer sync locked'}
+          />
+          <StatusPill
+            tone="neutral"
+            label={videoReady ? 'Local player ready' : 'Preparing player'}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Keyboard shortcuts">
+          <HotkeyChip label="Space" icon={<KeyboardIcon size={13} />} />
+          <HotkeyChip label="Left/Right" />
+          <HotkeyChip label="F" />
+        </div>
+      </div>
+
+      <div className="mb-4 w-full">
         <input
           type="range"
           min={0}
@@ -243,89 +279,169 @@ export function PlaybackControls({
           onMouseUp={handleSeekEnd}
           onTouchEnd={handleSeekEnd}
           disabled={!isHost}
-          className="w-full h-1 bg-surface-container-highest rounded appearance-none cursor-pointer accent-primary-container disabled:cursor-default disabled:opacity-50"
+          className="media-slider w-full cursor-pointer disabled:cursor-default disabled:opacity-50"
+          aria-label="Playback position"
+          aria-describedby={PLAYBACK_ACCESS_NOTE_ID}
+          aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
         />
       </div>
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:gap-6">
-          <button
-            type="button"
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Playback actions">
+          <ControlButton
+            icon={<RewindIcon size={16} />}
+            label={`Back ${SKIP_SECONDS}s`}
+            compactLabel={`-${SKIP_SECONDS}s`}
             onClick={() => skipBy(-SKIP_SECONDS)}
-            aria-disabled={!isHost}
-            className={`text-sm transition-colors md:text-lg ${
-              isHost
-                ? 'cursor-pointer text-on-surface-variant hover:text-primary'
-                : 'cursor-pointer text-on-surface-variant/55 hover:text-primary'
-            }`}
+            enabled={isHost}
+            ariaLabel={isHost ? `Rewind ${SKIP_SECONDS} seconds` : 'Only the host can rewind'}
             title={isHost ? `Rewind ${SKIP_SECONDS}s` : 'Only the host can rewind'}
-            aria-label={isHost ? `Rewind ${SKIP_SECONDS} seconds` : 'Only the host can rewind'}
-          >
-            -5s
-          </button>
-
-          <button
-            type="button"
-            onClick={togglePlay}
-            aria-disabled={!isHost}
-            className={`text-sm transition-colors md:text-lg ${
-              isHost
-                ? 'cursor-pointer text-on-surface-variant hover:text-primary'
-                : 'cursor-pointer text-on-surface-variant/55 hover:text-primary'
-            }`}
-            title={isHost ? 'Play or pause' : 'Only the host can control playback'}
-            aria-label={isHost ? 'Play or pause video' : 'Only the host can control playback'}
-          >
-            {isPlaying ? 'Pause' : 'Play'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => skipBy(SKIP_SECONDS)}
-            aria-disabled={!isHost}
-            className={`text-sm transition-colors md:text-lg ${
-              isHost
-                ? 'cursor-pointer text-on-surface-variant hover:text-primary'
-                : 'cursor-pointer text-on-surface-variant/55 hover:text-primary'
-            }`}
-            title={isHost ? `Forward ${SKIP_SECONDS}s` : 'Only the host can skip forward'}
-            aria-label={isHost ? `Skip forward ${SKIP_SECONDS} seconds` : 'Only the host can skip forward'}
-          >
-            +5s
-          </button>
-
-          <span className="min-w-0 text-[10px] font-mono uppercase tracking-widest text-primary-container md:ml-2 md:text-xs">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 md:gap-4">
-          <span className="text-sm text-on-surface-variant" title="Volume only affects you">
-            Vol
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume}
-            onChange={(event) => setVolume(Number.parseFloat(event.target.value))}
-            className="w-16 md:w-24 h-[2px] bg-surface-container-highest appearance-none cursor-pointer accent-primary"
-            title="Volume (only affects you)"
-            aria-label="Your volume"
+            describedBy={PLAYBACK_ACCESS_NOTE_ID}
           />
 
-          <button
-            type="button"
+          <ControlButton
+            icon={isPlaying ? <PauseIcon size={17} /> : <PlayIcon size={17} />}
+            label={isPlaying ? 'Pause' : 'Play'}
+            onClick={togglePlay}
+            enabled={isHost}
+            primary
+            ariaLabel={isHost ? 'Play or pause video' : 'Only the host can control playback'}
+            title={isHost ? 'Play or pause' : 'Only the host can control playback'}
+            ariaPressed={isPlaying}
+            describedBy={PLAYBACK_ACCESS_NOTE_ID}
+          />
+
+          <ControlButton
+            icon={<ForwardIcon size={16} />}
+            label={`Forward ${SKIP_SECONDS}s`}
+            compactLabel={`+${SKIP_SECONDS}s`}
+            onClick={() => skipBy(SKIP_SECONDS)}
+            enabled={isHost}
+            ariaLabel={
+              isHost ? `Skip forward ${SKIP_SECONDS} seconds` : 'Only the host can skip forward'
+            }
+            title={isHost ? `Forward ${SKIP_SECONDS}s` : 'Only the host can skip forward'}
+            describedBy={PLAYBACK_ACCESS_NOTE_ID}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Playback utilities">
+          <div className="rounded-full border border-primary-container/16 bg-black/24 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+            <span className="font-mono tracking-[0.22em]">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </span>
+          </div>
+
+          <div className="flex min-w-[14rem] flex-1 items-center gap-3 rounded-full border border-outline-variant/14 bg-black/20 px-4 py-2.5 xl:min-w-[16rem] xl:flex-none">
+            <VolumeIcon size={15} className="text-on-surface-variant" />
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
+              onChange={(event) => setVolume(Number.parseFloat(event.target.value))}
+              className="media-slider media-slider-thin w-full cursor-pointer"
+              title="Volume (only affects you)"
+              aria-label="Your volume"
+              aria-valuetext={`${Math.round(volume * 100)} percent`}
+            />
+          </div>
+
+          <ControlButton
+            icon={<FullscreenIcon size={16} />}
+            label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            compactLabel={isFullscreen ? 'Exit' : 'Full'}
             onClick={toggleFullscreen}
-            className="text-on-surface-variant text-sm md:text-base cursor-pointer hover:text-primary transition-colors"
+            enabled
+            ariaLabel={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
             title="Fullscreen"
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-          >
-            {isFullscreen ? 'Exit' : 'Full'}
-          </button>
+            describedBy={PLAYBACK_ACCESS_NOTE_ID}
+          />
         </div>
       </div>
     </div>
+  );
+}
+
+function ControlButton({
+  icon,
+  label,
+  compactLabel,
+  onClick,
+  enabled,
+  title,
+  ariaLabel,
+  describedBy,
+  ariaPressed,
+  primary = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  compactLabel?: string;
+  onClick: () => void;
+  enabled: boolean;
+  title: string;
+  ariaLabel: string;
+  describedBy?: string;
+  ariaPressed?: boolean;
+  primary?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-disabled={!enabled}
+      aria-describedby={describedBy}
+      aria-pressed={ariaPressed}
+      title={title}
+      aria-label={ariaLabel}
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.18em] transition ${
+        primary
+          ? 'border-primary-container/36 bg-primary-container text-on-primary-container shadow-[0_12px_32px_rgba(0,98,255,0.24)] hover:brightness-110'
+          : enabled
+          ? 'border-outline-variant/16 bg-black/18 text-on-surface-variant hover:border-primary-container/35 hover:text-on-surface'
+          : 'border-outline-variant/12 bg-black/18 text-on-surface-variant/55 hover:border-primary-container/22 hover:text-primary'
+      }`}
+    >
+      {icon}
+      <span className="hidden sm:inline">{label}</span>
+      <span className="sm:hidden">{compactLabel ?? label}</span>
+    </button>
+  );
+}
+
+function StatusPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: 'primary' | 'neutral';
+}) {
+  return (
+    <span
+      className={`rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] ${
+        tone === 'primary'
+          ? 'border-primary-container/28 bg-primary-container/10 text-primary'
+          : 'border-outline-variant/16 bg-black/18 text-on-surface-variant'
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function HotkeyChip({
+  label,
+  icon,
+}: {
+  label: string;
+  icon?: ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-outline-variant/14 bg-black/18 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+      {icon}
+      {label}
+    </span>
   );
 }

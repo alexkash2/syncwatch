@@ -8,11 +8,13 @@ import { Button } from '../components/ui/Button';
 import { BrandMarkIcon } from '../components/ui/icons';
 import { StatePanel } from '../components/ui/StatePanel';
 import { useAuth } from '../hooks/useAuth';
+import { useUi } from '../hooks/useUi';
 import { useLoadRoom } from '../hooks/useLoadRoom';
 import { useRoomWsHandler } from '../hooks/useRoomWsHandler';
 import { useVideoSync } from '../hooks/useVideoSync';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useRoomStore } from '../store/roomStore';
+import { getHomeArrivalNotice } from '../types/navigation';
 import type { RoomDetail } from '../types/room';
 import type {
   FileVerifyResult,
@@ -26,10 +28,17 @@ const EMPTY_REFERENCE_FILE: ReferenceFileState = {
   fileVersion: 0,
 };
 
+interface SessionNotice {
+  tone: 'warning' | 'success';
+  title: string;
+  description: string;
+}
+
 export function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { confirm, pushToast } = useUi();
 
   const participants = useRoomStore((state) => state.participants);
   const setParticipants = useRoomStore((state) => state.setParticipants);
@@ -60,6 +69,7 @@ export function RoomPage() {
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoReady, setVideoReady] = useState(false);
   const [interactionHint, setInteractionHint] = useState<string | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<SessionNotice | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSeqRef = useRef<number | null>(null);
@@ -67,6 +77,11 @@ export function RoomPage() {
   const syncMessageRef = useRef<(message: SyncRelatedMessage) => void>(() => {});
   const fileUrlRef = useRef<string | null>(null);
   const interactionHintTimerRef = useRef<number | null>(null);
+  const sessionNoticeTimerRef = useRef<number | null>(null);
+  const previousConnectionStateRef = useRef<'connected' | 'connecting' | 'reconnecting' | null>(
+    null
+  );
+  const previousHostDisconnectedRef = useRef(false);
 
   fileUrlRef.current = fileUrl;
 
@@ -111,14 +126,15 @@ export function RoomPage() {
     lastSeqRef,
     fileVersionRef,
     onFatalTicketError: (status) => {
-      const flash =
+      const arrivalNotice = getHomeArrivalNotice(
         status === 403
-          ? "You're no longer a participant of this room."
+          ? 'access_lost'
           : status === 404
-          ? 'The room no longer exists.'
-          : 'Could not connect to this room.';
+          ? 'room_not_found'
+          : 'room_connection_failed'
+      );
 
-      navigate('/', { state: { flash } });
+      navigate('/', { state: { arrivalNotice } });
     },
   });
   const connectionState = isConnected
@@ -126,6 +142,25 @@ export function RoomPage() {
     : isReconnecting
     ? 'reconnecting'
     : 'connecting';
+
+  const clearSessionNoticeTimer = useCallback(() => {
+    if (sessionNoticeTimerRef.current !== null) {
+      window.clearTimeout(sessionNoticeTimerRef.current);
+      sessionNoticeTimerRef.current = null;
+    }
+  }, []);
+
+  const showTimedSessionNotice = useCallback(
+    (notice: SessionNotice, durationMs = 3200) => {
+      clearSessionNoticeTimer();
+      setSessionNotice(notice);
+      sessionNoticeTimerRef.current = window.setTimeout(() => {
+        setSessionNotice(null);
+        sessionNoticeTimerRef.current = null;
+      }, durationMs);
+    },
+    [clearSessionNoticeTimer]
+  );
 
   const { handleSyncMessage, autoplayBlocked, resumePlayback } = useVideoSync({
     videoRef,
@@ -238,24 +273,115 @@ export function RoomPage() {
     }
 
     const isHost = room?.host_id === user?.id;
-    if (
-      isHost &&
-      !window.confirm('Leaving as the host will close the room for everyone. Continue?')
-    ) {
-      return;
+    if (isHost) {
+      const confirmed = await confirm({
+        eyebrow: 'Leave As Host',
+        title: 'Close the room for everyone?',
+        description:
+          'Leaving as host ends the synced session and disconnects every participant in the room.',
+        confirmLabel: 'Leave room',
+        cancelLabel: 'Stay here',
+        tone: 'danger',
+      });
+
+      if (!confirmed) {
+        return;
+      }
     }
 
     try {
       await leaveRoom(roomId);
+      pushToast({
+        tone: 'primary',
+        title: isHost ? 'Room closed' : 'You left the room',
+        description: isHost
+          ? 'The synced session was closed for everyone.'
+          : 'You can rejoin later from the dashboard.',
+      });
     } finally {
       navigate('/');
     }
-  }, [navigate, room?.host_id, roomId, user?.id]);
+  }, [confirm, navigate, pushToast, room?.host_id, roomId, user?.id]);
+
+  useEffect(() => {
+    const previousConnectionState = previousConnectionStateRef.current;
+
+    if (previousConnectionState === null) {
+      previousConnectionStateRef.current = connectionState;
+      return;
+    }
+
+    if (previousConnectionState === connectionState) {
+      return;
+    }
+
+    if (connectionState === 'reconnecting') {
+      clearSessionNoticeTimer();
+      setSessionNotice({
+        tone: 'warning',
+        title: 'Reconnecting to the live room',
+        description:
+          'SyncWatch is restoring the room channel without discarding your local file or playback position.',
+      });
+    } else if (previousConnectionState === 'reconnecting' && connectionState === 'connected') {
+      showTimedSessionNotice(
+        {
+          tone: 'success',
+          title: 'Connection restored',
+          description: 'Realtime sync is back and the room timeline is current again.',
+        },
+        3400
+      );
+      pushToast({
+        tone: 'success',
+        title: 'Connection restored',
+        description: 'The live room link is healthy again.',
+        durationMs: 3200,
+      });
+    } else if (connectionState === 'connected') {
+      clearSessionNoticeTimer();
+      setSessionNotice(null);
+    }
+
+    previousConnectionStateRef.current = connectionState;
+  }, [clearSessionNoticeTimer, connectionState, pushToast, showTimedSessionNotice]);
+
+  useEffect(() => {
+    const previousHostDisconnected = previousHostDisconnectedRef.current;
+
+    if (!previousHostDisconnected && hostDisconnected) {
+      clearSessionNoticeTimer();
+      setSessionNotice(null);
+    }
+
+    if (previousHostDisconnected && !hostDisconnected) {
+      showTimedSessionNotice(
+        {
+          tone: 'success',
+          title: 'Host is back in the room',
+          description:
+            'The session stayed preserved, and shared playback control is available again.',
+        },
+        3600
+      );
+      pushToast({
+        tone: 'success',
+        title: 'Host reconnected',
+        description: 'The room recovered without losing its current state.',
+        durationMs: 3400,
+      });
+    }
+
+    previousHostDisconnectedRef.current = hostDisconnected;
+  }, [clearSessionNoticeTimer, hostDisconnected, pushToast, showTimedSessionNotice]);
 
   useEffect(() => {
     return () => {
       if (interactionHintTimerRef.current !== null) {
         window.clearTimeout(interactionHintTimerRef.current);
+      }
+      if (sessionNoticeTimerRef.current !== null) {
+        window.clearTimeout(sessionNoticeTimerRef.current);
       }
       if (fileUrlRef.current) {
         URL.revokeObjectURL(fileUrlRef.current);
@@ -321,6 +447,7 @@ export function RoomPage() {
           roomCode={room.room_code}
           connectionState={connectionState}
           isHost={Boolean(isHost)}
+          sidebarOpen={sidebarOpen}
           onLeave={handleLeave}
           onToggleSidebar={() => setSidebarOpen((current) => !current)}
         />
@@ -342,6 +469,7 @@ export function RoomPage() {
               totalParticipants={participants.length}
               autoplayBlocked={autoplayBlocked}
               interactionHint={interactionHint}
+              sessionNotice={sessionNotice}
               onResumePlayback={resumePlayback}
               onNonHostControlAttempt={showInteractionHint}
               onFileVerified={handleFileVerified}

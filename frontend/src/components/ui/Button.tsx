@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import {
   buttonStyles,
   type ButtonSize,
@@ -13,26 +13,34 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   trailingIcon?: ReactNode;
 }
 
-export function Button({
-  variant = 'secondary',
-  size = 'md',
-  fullWidth = false,
-  leadingIcon,
-  trailingIcon,
-  className,
-  children,
-  type = 'button',
-  ...props
-}: ButtonProps) {
-  return (
-    <button
-      type={type}
-      className={buttonStyles({ variant, size, fullWidth, className })}
-      {...props}
-    >
-      {leadingIcon}
-      {children}
-      {trailingIcon}
-    </button>
-  );
-}
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  (
+    {
+      variant = 'secondary',
+      size = 'md',
+      fullWidth = false,
+      leadingIcon,
+      trailingIcon,
+      className,
+      children,
+      type = 'button',
+      ...props
+    },
+    ref
+  ) => {
+    return (
+      <button
+        ref={ref}
+        type={type}
+        className={buttonStyles({ variant, size, fullWidth, className })}
+        {...props}
+      >
+        {leadingIcon}
+        {children}
+        {trailingIcon}
+      </button>
+    );
+  }
+);
+
+Button.displayName = 'Button';

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { NavigateFunction } from 'react-router';
 import { getChatHistory, getRoom } from '../api/rooms';
+import { getHomeArrivalNotice } from '../types/navigation';
 import type { RoomDetail } from '../types/room';
 import type { ChatMessage, WsParticipant } from '../types/ws';
 
@@ -47,14 +48,15 @@ export function useLoadRoom({
         console.error('Failed to load room:', error);
         if (!cancelled) {
           const status = (error as { response?: { status?: number } })?.response?.status;
-          const flash =
+          const arrivalNotice = getHomeArrivalNotice(
             status === 404
-              ? 'Room not found. It may have been deleted.'
+              ? 'room_not_found'
               : status === 403
-              ? "You don't have access to this room."
-              : 'Could not load the room. Please try again.';
+              ? 'access_lost'
+              : 'room_load_failed'
+          );
 
-          navigate('/', { state: { flash } });
+          navigate('/', { state: { arrivalNotice } });
         }
       } finally {
         if (!cancelled) {

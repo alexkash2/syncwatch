@@ -127,6 +127,8 @@ export function ChatPanel({
     }
   };
 
+  const trimmedInput = input.trim();
+
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-outline-variant/10 px-4 py-4">
@@ -142,6 +144,7 @@ export function ChatPanel({
         ref={scrollRef}
         onScroll={() => void handleScroll()}
         className="flex-1 overflow-y-auto px-4 py-4"
+        aria-busy={loadingMore}
       >
         {loadError && messages.length === 0 ? (
           <StatePanel
@@ -235,10 +238,11 @@ export function ChatPanel({
       <form onSubmit={handleSubmit} className="border-t border-outline-variant/10 p-4">
         {sendError && (
           <Panel
+            id="room-chat-error"
             variant="outline"
             padding="sm"
             className="mb-3 rounded-[1.35rem] border-error/28 bg-error-container/25"
-            aria-live="polite"
+            role="alert"
           >
             <p className="text-[11px] text-error">You are offline right now. Message not sent.</p>
           </Panel>
@@ -258,10 +262,13 @@ export function ChatPanel({
               placeholder="Type a message..."
               maxLength={2000}
               aria-label="Type a chat message"
+              aria-invalid={sendError}
+              aria-describedby={sendError ? 'room-chat-error' : undefined}
             />
             <button
               type="submit"
-              className="rounded-xl bg-primary-container px-4 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-on-primary-container transition hover:brightness-110"
+              disabled={!trimmedInput}
+              className="rounded-xl bg-primary-container px-4 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-on-primary-container transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:brightness-100"
               aria-label="Send chat message"
             >
               Send
