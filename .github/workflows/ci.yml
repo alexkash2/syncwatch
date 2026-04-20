@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Repo's default branch is `master`; keeping `main` here too so the
+    # workflow still fires if the default branch gets renamed later.
+    branches: [master, main]
   pull_request:
 
 concurrency:
