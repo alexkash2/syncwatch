@@ -1,42 +1,109 @@
 import axios from 'axios';
+import type { TokenResponse } from '../types/auth';
 
-const client = axios.create({
-  baseURL: '/api',
+declare module 'axios' {
+  interface InternalAxiosRequestConfig {
+    _retry?: boolean;
+  }
+}
+
+function normalizeApiBaseUrl(rawUrl?: string) {
+  if (!rawUrl) {
+    return '/api';
+  }
+
+  const trimmed = rawUrl.replace(/\/$/, '');
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+}
+
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL);
+
+function getAccessToken() {
+  return localStorage.getItem('access_token');
+}
+
+function getRefreshToken() {
+  return localStorage.getItem('refresh_token');
+}
+
+export function clearAuthStorage() {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+}
+
+export function storeAuthTokens(tokens: TokenResponse) {
+  localStorage.setItem('access_token', tokens.access_token);
+  localStorage.setItem('refresh_token', tokens.refresh_token);
+}
+
+export const apiClient = axios.create({
+  baseURL: API_BASE_URL,
 });
 
-client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+apiClient.interceptors.request.use((config) => {
+  const accessToken = getAccessToken();
+
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
   }
+
   return config;
 });
 
-client.interceptors.response.use(
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken() {
+  const refreshToken = getRefreshToken();
+
+  if (!refreshToken) {
+    clearAuthStorage();
+    return null;
+  }
+
+  try {
+    const response = await axios.post<TokenResponse>(`${API_BASE_URL}/auth/refresh`, {
+      refresh_token: refreshToken,
+    });
+
+    storeAuthTokens(response.data);
+    return response.data.access_token;
+  } catch {
+    clearAuthStorage();
+    return null;
+  }
+}
+
+apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
-      original._retry = true;
-      const refreshToken = localStorage.getItem('refresh_token');
-      if (refreshToken) {
-        try {
-          const { data } = await axios.post('/api/auth/refresh', {
-            refresh_token: refreshToken,
-          });
-          localStorage.setItem('access_token', data.access_token);
-          localStorage.setItem('refresh_token', data.refresh_token);
-          original.headers.Authorization = `Bearer ${data.access_token}`;
-          return client(original);
-        } catch {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-          window.location.href = '/login';
-        }
-      }
+    const originalRequest = error.config;
+
+    if (
+      error.response?.status !== 401 ||
+      !originalRequest ||
+      originalRequest._retry ||
+      originalRequest.url?.includes('/auth/login') ||
+      originalRequest.url?.includes('/auth/register') ||
+      originalRequest.url?.includes('/auth/refresh')
+    ) {
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    originalRequest._retry = true;
+
+    if (!refreshPromise) {
+      refreshPromise = refreshAccessToken().finally(() => {
+        refreshPromise = null;
+      });
+    }
+
+    const nextAccessToken = await refreshPromise;
+
+    if (!nextAccessToken) {
+      return Promise.reject(error);
+    }
+
+    originalRequest.headers.Authorization = `Bearer ${nextAccessToken}`;
+    return apiClient(originalRequest);
   }
 );
-
-export default client;

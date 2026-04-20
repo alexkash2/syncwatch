@@ -1,0 +1,274 @@
+import { Button } from '../ui/Button';
+import { FileSelector } from './FileSelector';
+import { HostDisconnectOverlay } from './HostDisconnectOverlay';
+import { PlaybackControls } from './PlaybackControls';
+import { VideoPlayer } from './VideoPlayer';
+import type { FileVerifyResult, RoomStatus } from '../../types/ws';
+
+interface VideoAreaProps {
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  roomStatus: RoomStatus;
+  fileUrl: string | null;
+  isHost: boolean;
+  isConnected: boolean;
+  hostDisconnected: boolean;
+  graceCountdown: number;
+  referenceFileName: string | null;
+  videoError: string | null;
+  videoReady: boolean;
+  readyParticipants: number;
+  totalParticipants: number;
+  autoplayBlocked: boolean;
+  onResumePlayback: () => void;
+  onVideoCanPlay: () => void;
+  onVideoError: (errorCode: string) => void;
+  onVideoClickToggle: () => void;
+  onPlay: (timeMs: number) => void;
+  onPause: (timeMs: number) => void;
+  onSeek: (timeMs: number) => void;
+  onFileVerified: (url: string) => void;
+  onVerifyRequest: (hash: string, size: number, durationMs: number, fileName: string) => void;
+  verifyResult: FileVerifyResult | null;
+}
+
+export function VideoArea({
+  videoRef,
+  roomStatus,
+  fileUrl,
+  isHost,
+  isConnected,
+  hostDisconnected,
+  graceCountdown,
+  referenceFileName,
+  videoError,
+  videoReady,
+  readyParticipants,
+  totalParticipants,
+  autoplayBlocked,
+  onResumePlayback,
+  onVideoCanPlay,
+  onVideoError,
+  onVideoClickToggle,
+  onPlay,
+  onPause,
+  onSeek,
+  onFileVerified,
+  onVerifyRequest,
+  verifyResult,
+}: VideoAreaProps) {
+  const statusMeta = getRoomStatusMeta(roomStatus, isHost);
+  const everyoneReady = totalParticipants > 0 && readyParticipants === totalParticipants;
+
+  return (
+    <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-outline-variant/15 bg-black/60 shadow-[0_28px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,98,255,0.18),transparent_26%),linear-gradient(180deg,rgba(255,255,255,0.03)_0%,rgba(255,255,255,0)_40%,rgba(255,255,255,0.04)_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:28px_28px] opacity-20" />
+      </div>
+
+      <div className="relative z-20 flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/10 px-4 py-4 md:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusChip label={isHost ? 'Host Control' : 'Viewer'} tone="neutral" />
+          <StatusChip label={statusMeta.label} tone={statusMeta.tone} />
+          <StatusChip label={isConnected ? 'Connected' : 'Reconnecting'} tone={isConnected ? 'success' : 'neutral'} />
+          {referenceFileName && <StatusChip label={truncateLabel(referenceFileName)} tone="neutral" />}
+        </div>
+
+        <div className="flex items-center gap-3 rounded-full border border-outline-variant/15 bg-black/35 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-on-surface-variant">
+          <span>Ready</span>
+          <span className="font-mono text-primary">{readyParticipants}/{totalParticipants || 0}</span>
+        </div>
+      </div>
+
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        {fileUrl ? (
+          <>
+            <div className="relative min-h-0 flex-1">
+              <VideoPlayer
+                ref={videoRef}
+                src={fileUrl}
+                isInteractive={isHost}
+                onCanPlay={onVideoCanPlay}
+                onError={onVideoError}
+                onClickToggle={onVideoClickToggle}
+              />
+
+              {autoplayBlocked && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/65 px-4">
+                  <div className="max-w-md rounded-[1.75rem] border border-primary-container/25 bg-surface-container-low/85 p-6 text-center shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
+                      Action Needed
+                    </p>
+                    <h3 className="mt-3 text-2xl font-black tracking-tight text-on-surface">
+                      Playback is waiting for your click
+                    </h3>
+                    <p className="mt-3 text-sm leading-7 text-on-surface-variant">
+                      Your browser blocked autoplay. Resume locally once and the room will continue from the synced timeline.
+                    </p>
+                    <div className="mt-5">
+                      <Button variant="primary" size="md" onClick={onResumePlayback}>
+                        Resume Playback
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex flex-col gap-3 md:inset-x-6">
+                <div className="flex flex-wrap gap-3">
+                  <FloatingPanel title={statusMeta.label} description={statusMeta.description} />
+
+                  {!everyoneReady && (
+                    <FloatingPanel
+                      title="Room readiness"
+                      description={
+                        isHost
+                          ? 'Wait for everyone to load the same file before starting playback.'
+                          : 'Your player is loaded. The host can start once everyone is ready.'
+                      }
+                    />
+                  )}
+                </div>
+
+                {!isConnected && (
+                  <div className="inline-flex w-fit items-center gap-2 rounded-full border border-outline-variant/20 bg-black/55 px-4 py-2 text-xs text-on-surface-variant backdrop-blur-xl">
+                    Reconnecting to room...
+                  </div>
+                )}
+              </div>
+
+              {videoError && (
+                <PlayerAlert
+                  title={videoError === 'codec_unsupported' ? 'This browser cannot play the file' : 'Playback error'}
+                  description={
+                    videoError === 'codec_unsupported'
+                      ? 'Try another browser or a more widely supported video format.'
+                      : 'Reload the local file or choose it again to recover the player.'
+                  }
+                />
+              )}
+
+              {!videoReady && !videoError && !hostDisconnected && (
+                <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 md:inset-x-6">
+                  <div className="inline-flex items-center gap-3 rounded-full border border-outline-variant/15 bg-black/55 px-4 py-2 text-xs text-on-surface-variant backdrop-blur-xl">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-primary-container" />
+                    Preparing the local video player...
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <PlaybackControls
+              videoRef={videoRef}
+              isHost={isHost}
+              onPlay={onPlay}
+              onPause={onPause}
+              onSeek={onSeek}
+              videoReady
+            />
+          </>
+        ) : (
+          <FileSelector
+            isHost={isHost}
+            roomStatus={roomStatus}
+            referenceFileName={referenceFileName}
+            onFileVerified={onFileVerified}
+            onVerifyRequest={onVerifyRequest}
+            verifyResult={verifyResult}
+          />
+        )}
+      </div>
+
+      {hostDisconnected && <HostDisconnectOverlay graceCountdown={graceCountdown} />}
+    </section>
+  );
+}
+
+function FloatingPanel({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="max-w-sm rounded-2xl border border-outline-variant/15 bg-black/45 px-4 py-3 backdrop-blur-xl">
+      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-on-surface-variant">{description}</p>
+    </div>
+  );
+}
+
+function PlayerAlert({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/55 px-4">
+      <div className="max-w-md rounded-[1.75rem] border border-error/30 bg-surface-container-low/85 p-6 text-center shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-error">Player State</p>
+        <h3 className="mt-3 text-2xl font-black tracking-tight text-on-surface">{title}</h3>
+        <p className="mt-3 text-sm leading-7 text-on-surface-variant">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function StatusChip({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: 'neutral' | 'success' | 'warning' | 'accent';
+}) {
+  const classes = {
+    neutral: 'border-outline-variant/15 bg-black/35 text-on-surface-variant',
+    success: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200',
+    warning: 'border-amber-300/25 bg-amber-300/10 text-amber-100',
+    accent: 'border-primary-container/30 bg-primary-container/12 text-primary',
+  } satisfies Record<string, string>;
+
+  return (
+    <span className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${classes[tone]}`}>
+      {label}
+    </span>
+  );
+}
+
+function getRoomStatusMeta(roomStatus: RoomStatus, isHost: boolean) {
+  switch (roomStatus) {
+    case 'waiting_file':
+      return {
+        label: 'Waiting for file',
+        tone: 'warning' as const,
+        description: isHost
+          ? 'Choose the first reference file to anchor the room.'
+          : 'The host still needs to choose a reference file for everyone.',
+      };
+    case 'waiting_ready':
+      return {
+        label: 'Waiting for readiness',
+        tone: 'accent' as const,
+        description: isHost
+          ? 'Participants are matching the reference file before playback starts.'
+          : 'Match the host file locally and the room will sync once everyone is ready.',
+      };
+    case 'playing':
+      return {
+        label: 'Live playback',
+        tone: 'success' as const,
+        description: isHost
+          ? 'You are actively driving the room timeline.'
+          : 'Playback is currently following the host timeline.',
+      };
+    case 'paused':
+      return {
+        label: 'Paused',
+        tone: 'neutral' as const,
+        description: isHost
+          ? 'You can resume whenever the room is ready.'
+          : 'The host paused the session. Your local player will hold the synced frame.',
+      };
+    case 'closing':
+      return {
+        label: 'Host reconnecting',
+        tone: 'warning' as const,
+        description: 'The room is holding state while the host connection recovers.',
+      };
+  }
+}
+
+function truncateLabel(value: string) {
+  return value.length > 28 ? `${value.slice(0, 25)}...` : value;
+}

@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from 'react';
+import { createWsTicket } from '../api/auth';
+import { useRoomStore } from '../store/roomStore';
 import type { WsMessage } from '../types/ws';
-import client from '../api/client';
 
-interface UseWebSocketOptions {
+interface WebSocketOptions {
   roomId: string;
   onMessage: (msg: WsMessage) => void;
-  lastSeqRef?: React.MutableRefObject<number>;
-  fileVersionRef?: React.MutableRefObject<number>;
-  /** Called when the ticket endpoint returns a non-retryable HTTP error
-   * (403/404/422) — caller is expected to navigate out with a user-visible
-   * explanation instead of leaving us in a reconnect loop. */
+  lastSeqRef: MutableRefObject<number | null>;
+  fileVersionRef: MutableRefObject<number>;
   onFatalTicketError?: (status: number) => void;
 }
 
@@ -19,84 +23,137 @@ export function useWebSocket({
   lastSeqRef,
   fileVersionRef,
   onFatalTicketError,
-}: UseWebSocketOptions) {
-  const wsRef = useRef<WebSocket | null>(null);
+}: WebSocketOptions) {
   const [isConnected, setIsConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
-  const reconnectAttempt = useRef(0);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const wsRef = useRef<WebSocket | null>(null);
+  const connectRef = useRef<() => Promise<void>>(async () => {});
+  const reconnectTimeoutRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const shouldReconnectRef = useRef(true);
+  const intentionalCloseRef = useRef(false);
+  const hasConnectedRef = useRef(false);
+  const mountIdRef = useRef(0);
   const onMessageRef = useRef(onMessage);
   const onFatalRef = useRef(onFatalTicketError);
-  const intentionalClose = useRef(false);
-  const hasConnectedBefore = useRef(false);
-  const mountIdRef = useRef(0);
-  const connectRef = useRef<(() => Promise<void>) | undefined>(undefined);
-  // Keep callbacks in refs so `connect`'s closure always sees the latest
-  // version without needing them in its dependency array — otherwise an
-  // inline callback (common in callers) would be captured stale.
-  onMessageRef.current = onMessage;
-  onFatalRef.current = onFatalTicketError;
+  const resetRoom = useRoomStore((state) => state.resetRoom);
 
-  // Store connect in a ref to allow self-referencing in onclose without lint issues
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
+
+  useEffect(() => {
+    onFatalRef.current = onFatalTicketError;
+  }, [onFatalTicketError]);
+
+  const scheduleReconnect = useCallback(() => {
+    if (
+      !shouldReconnectRef.current ||
+      intentionalCloseRef.current ||
+      reconnectTimeoutRef.current !== null
+    ) {
+      return;
+    }
+
+    const timeoutMs = Math.min(1000 * 2 ** reconnectAttemptRef.current, 30000);
+    reconnectAttemptRef.current += 1;
+    setIsReconnecting(true);
+
+    reconnectTimeoutRef.current = window.setTimeout(() => {
+      reconnectTimeoutRef.current = null;
+      void connectRef.current();
+    }, timeoutMs);
+  }, []);
+
   const connect = useCallback(async () => {
-    const myMountId = mountIdRef.current;
-    if (intentionalClose.current) return;
+    if (!roomId || !shouldReconnectRef.current || intentionalCloseRef.current) {
+      return;
+    }
+
+    const currentMountId = mountIdRef.current;
 
     try {
-      const { data } = await client.post('/auth/ws-ticket', { room_id: roomId });
-      if (intentionalClose.current || myMountId !== mountIdRef.current) return;
-      const ticket = data.ticket;
+      const ticket = await createWsTicket(roomId);
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/${roomId}?ticket=${ticket}`);
+      if (
+        !shouldReconnectRef.current ||
+        intentionalCloseRef.current ||
+        currentMountId !== mountIdRef.current
+      ) {
+        return;
+      }
 
-      ws.onopen = () => {
+      const nextWebSocket = new WebSocket(buildWsUrl(roomId, ticket));
+      wsRef.current = nextWebSocket;
+
+      nextWebSocket.onopen = () => {
+        reconnectAttemptRef.current = 0;
         setIsConnected(true);
         setIsReconnecting(false);
-        reconnectAttempt.current = 0;
-        if (hasConnectedBefore.current) {
-          ws.send(JSON.stringify({
-            type: 'reconnect',
-            last_seq: lastSeqRef?.current ?? 0,
-            file_version: fileVersionRef?.current ?? 0,
-          }));
+
+        if (hasConnectedRef.current) {
+          nextWebSocket.send(
+            JSON.stringify({
+              type: 'reconnect',
+              last_seq: lastSeqRef.current ?? 0,
+              file_version: fileVersionRef.current,
+            })
+          );
         }
-        hasConnectedBefore.current = true;
+
+        hasConnectedRef.current = true;
       };
 
-      ws.onmessage = (event) => {
+      nextWebSocket.onmessage = (event) => {
         try {
           const msg: WsMessage = JSON.parse(event.data);
-          if (msg.type === 'error' && msg.code === 'tab_replaced') {
-            intentionalClose.current = true;
+
+          if (
+            msg.seq !== undefined &&
+            lastSeqRef.current !== null &&
+            msg.seq <= lastSeqRef.current
+          ) {
+            return;
           }
+
+          if (msg.seq !== undefined) {
+            lastSeqRef.current = msg.seq;
+          }
+
+          if (msg.type === 'error' && msg.code === 'tab_replaced') {
+            intentionalCloseRef.current = true;
+          }
+
           onMessageRef.current(msg);
-        } catch {
-          // Invalid JSON
+        } catch (error) {
+          console.error('Failed to parse websocket message:', error);
         }
       };
 
-      ws.onclose = () => {
+      nextWebSocket.onerror = () => {
+        nextWebSocket.close();
+      };
+
+      nextWebSocket.onclose = () => {
+        if (wsRef.current === nextWebSocket) {
+          wsRef.current = null;
+        }
+
         setIsConnected(false);
-        wsRef.current = null;
-        if (!intentionalClose.current && myMountId === mountIdRef.current) {
-          setIsReconnecting(true);
-          const delay = Math.min(1000 * 2 ** reconnectAttempt.current, 30000);
-          reconnectAttempt.current++;
-          reconnectTimer.current = setTimeout(() => connectRef.current?.(), delay);
+
+        if (
+          shouldReconnectRef.current &&
+          !intentionalCloseRef.current &&
+          currentMountId === mountIdRef.current
+        ) {
+          scheduleReconnect();
+        } else {
+          setIsReconnecting(false);
         }
       };
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
 
-      ws.onerror = () => {
-        ws.close();
-      };
-
-      wsRef.current = ws;
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      // 401 is handled by the axios interceptor (refresh + retry). Anything
-      // else in 4xx is a permanent rejection (403 not-a-participant, 404 room
-      // gone, 422 bad payload) — retrying won't help, bail to the caller.
       if (
         status !== undefined &&
         status >= 400 &&
@@ -104,49 +161,93 @@ export function useWebSocket({
         status !== 401 &&
         status !== 429
       ) {
-        intentionalClose.current = true;
+        intentionalCloseRef.current = true;
+        shouldReconnectRef.current = false;
+        setIsConnected(false);
         setIsReconnecting(false);
-        if (myMountId === mountIdRef.current) onFatalRef.current?.(status);
+        onFatalRef.current?.(status);
         return;
       }
-      if (!intentionalClose.current && myMountId === mountIdRef.current) {
-        setIsReconnecting(true);
-        const delay = Math.min(1000 * 2 ** reconnectAttempt.current, 30000);
-        reconnectAttempt.current++;
-        reconnectTimer.current = setTimeout(() => connectRef.current?.(), delay);
-      }
-    }
-    // lastSeqRef, fileVersionRef, onFatalTicketError are stable across renders
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId]);
 
-  connectRef.current = connect;
+      console.error('Failed to connect websocket:', error);
+      setIsConnected(false);
+      scheduleReconnect();
+    }
+  }, [fileVersionRef, lastSeqRef, roomId, scheduleReconnect]);
 
   useEffect(() => {
-    mountIdRef.current++;
-    intentionalClose.current = false;
-    hasConnectedBefore.current = false;
-    connect();
-    return () => {
-      intentionalClose.current = true;
-      clearTimeout(reconnectTimer.current);
-      const ws = wsRef.current;
-      if (ws) {
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
-        }
-        wsRef.current = null;
-      }
-    };
+    connectRef.current = connect;
   }, [connect]);
 
-  const send = useCallback((type: string, payload: Record<string, unknown> = {}): boolean => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type, ...payload }));
-      return true;
+  useEffect(() => {
+    if (!roomId) {
+      return;
     }
-    return false;
-  }, []);
+
+    mountIdRef.current += 1;
+    shouldReconnectRef.current = true;
+    intentionalCloseRef.current = false;
+    hasConnectedRef.current = false;
+    reconnectAttemptRef.current = 0;
+
+    const connectTimeoutId = window.setTimeout(() => {
+      void connect();
+    }, 0);
+
+    return () => {
+      shouldReconnectRef.current = false;
+      intentionalCloseRef.current = true;
+      window.clearTimeout(connectTimeoutId);
+
+      if (reconnectTimeoutRef.current !== null) {
+        window.clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      wsRef.current?.close();
+      wsRef.current = null;
+      setIsConnected(false);
+      setIsReconnecting(false);
+      resetRoom();
+    };
+  }, [connect, resetRoom, roomId]);
+
+  const send = useCallback(
+    (type: string, payload: Record<string, unknown> = {}) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return false;
+      }
+
+      const message: Record<string, unknown> = {
+        type,
+        ...payload,
+      };
+
+      if (message.file_version === undefined) {
+        message.file_version = fileVersionRef.current;
+      }
+
+      ws.send(JSON.stringify(message));
+      return true;
+    },
+    [fileVersionRef]
+  );
 
   return { send, isConnected, isReconnecting };
+}
+
+function normalizeWsBaseUrl(rawUrl?: string) {
+  if (rawUrl) {
+    const trimmed = rawUrl.replace(/\/$/, '');
+    return trimmed.endsWith('/ws') ? trimmed : `${trimmed}/ws`;
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/ws`;
+}
+
+function buildWsUrl(roomId: string, ticket: string) {
+  const wsBaseUrl = normalizeWsBaseUrl(import.meta.env.VITE_WS_URL);
+  return `${wsBaseUrl}/${roomId}?ticket=${encodeURIComponent(ticket)}`;
 }

@@ -19,9 +19,32 @@
 
 body {
   margin: 0;
-  background-color: var(--color-surface);
+  background:
+    radial-gradient(circle at top left, rgba(0, 98, 255, 0.16), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(180, 197, 255, 0.1), transparent 28%),
+    #131313;
   color: var(--color-on-surface);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(180, 197, 255, 0.32);
+  color: #fff;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: -0.03em;
 }
 
 #root {

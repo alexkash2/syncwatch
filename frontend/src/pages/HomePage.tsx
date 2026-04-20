@@ -1,8 +1,27 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { createRoom, deleteRoom, joinRoom, listRooms } from '../api/rooms';
-import { useAuth } from '../hooks/useAuth';
 import { Layout } from '../components/layout/Layout';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { Field } from '../components/ui/Field';
+import { Input } from '../components/ui/Input';
+import {
+  ArrowUpRightIcon,
+  ChatBubbleIcon,
+  RefreshIcon,
+  UsersIcon,
+  VideoIcon,
+} from '../components/ui/icons';
+import { Panel } from '../components/ui/Panel';
+import { useAuth } from '../hooks/useAuth';
 import type { Room } from '../types/room';
 
 export function HomePage() {
@@ -13,15 +32,14 @@ export function HomePage() {
   const [roomName, setRoomName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [flash, setFlash] = useState<string | null>(
     (location.state as { flash?: string } | null)?.flash ?? null
   );
+  const [roomsError, setRoomsError] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(true);
 
-  // Clear the flash from router state so it doesn't replay on back/forward.
-  // Use react-router's own navigate(..., { replace, state: null }) instead of
-  // raw history.replaceState — the latter clobbers the internal `usr` key
-  // router 7 uses to track state and breaks subsequent navigation state.
   useEffect(() => {
     if (location.state && (location.state as { flash?: string }).flash) {
       navigate(location.pathname + location.search, {
@@ -29,259 +47,434 @@ export function HomePage() {
         state: null,
       });
     }
-  }, [location.state, location.pathname, location.search, navigate]);
+  }, [location.pathname, location.search, location.state, navigate]);
 
   useEffect(() => {
-    if (!flash) return;
-    const t = setTimeout(() => setFlash(null), 6000);
-    return () => clearTimeout(t);
+    if (!flash) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setFlash(null), 6000);
+    return () => window.clearTimeout(timeoutId);
   }, [flash]);
 
-  const [roomsLoading, setRoomsLoading] = useState(true);
-  const [roomsLoadError, setRoomsLoadError] = useState(false);
-
   const fetchRooms = useCallback(async () => {
-    setRoomsLoadError(false);
+    setIsLoadingRooms(true);
+    setRoomsError('');
+
     try {
       const data = await listRooms();
       setRooms(data.rooms);
     } catch {
-      // Surface the failure — otherwise an empty list below is
-      // indistinguishable from "backend down / network error".
-      setRoomsLoadError(true);
+      setRoomsError('Failed to load your rooms right now.');
     } finally {
-      setRoomsLoading(false);
+      setIsLoadingRooms(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchRooms();
+    void fetchRooms();
   }, [fetchRooms]);
 
-  const handleCreate = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!roomName.trim()) return;
+  const ownedRooms = useMemo(
+    () => rooms.filter((room) => room.host_id === user?.id).length,
+    [rooms, user?.id]
+  );
+
+  const joinedRooms = rooms.length - ownedRooms;
+
+  const handleCreate = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!roomName.trim()) {
+      return;
+    }
+
     setError('');
-    setLoading(true);
+    setIsCreating(true);
+
     try {
       const room = await createRoom(roomName.trim());
       navigate(`/room/${room.id}`);
     } catch (err: unknown) {
-      setError((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Failed to create room');
+      setError(
+        (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ||
+          'Failed to create room'
+      );
     } finally {
-      setLoading(false);
+      setIsCreating(false);
     }
   };
 
-  const handleDelete = async (roomId: string) => {
-    if (!window.confirm('Delete this room? All participants will be disconnected.')) {
+  const handleJoin = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!roomCode.trim()) {
       return;
     }
+
     setError('');
+    setIsJoining(true);
+
     try {
-      await deleteRoom(roomId);
-      setFlash('Room deleted.');
-      await fetchRooms();
+      const room = await joinRoom(roomCode.trim().toUpperCase());
+      navigate(`/room/${room.id}`);
     } catch (err: unknown) {
       setError(
         (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ||
-          'Failed to delete room'
+          'Failed to join room'
       );
+    } finally {
+      setIsJoining(false);
     }
   };
 
-  const handleJoin = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!roomCode.trim()) return;
-    setError('');
-    setLoading(true);
-    try {
-      const room = await joinRoom(roomCode.trim());
-      navigate(`/room/${room.id}`);
-    } catch (err: unknown) {
-      setError((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Failed to join room');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleDelete = useCallback(
+    async (roomId: string) => {
+      if (!window.confirm('Delete this room? All participants will be disconnected.')) {
+        return;
+      }
+
+      setError('');
+
+      try {
+        await deleteRoom(roomId);
+        setFlash('Room deleted.');
+        await fetchRooms();
+      } catch (err: unknown) {
+        setError(
+          (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ||
+            'Failed to delete room'
+        );
+      }
+    },
+    [fetchRooms]
+  );
 
   return (
     <Layout>
-      <section className="mb-16">
-        <h1 className="font-black text-3xl md:text-5xl tracking-tighter text-on-surface mb-2">
-          Dashboard
-        </h1>
-        <p className="text-xs uppercase tracking-[0.2em] text-primary">
-          Create or join a room to start watching
-        </p>
+      <section className="relative overflow-hidden rounded-[2.4rem] border border-outline-variant/18 bg-surface-container-low/78 px-6 py-8 shadow-[0_32px_90px_rgba(0,0,0,0.3)] md:px-10 md:py-12 xl:px-12">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,98,255,0.18),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0.05),transparent_40%)]" />
+          <div className="absolute -right-12 top-10 h-44 w-44 rounded-full border border-primary-container/12 bg-primary-container/12 blur-3xl" />
+          <div className="absolute left-0 top-0 h-full w-px bg-white/8" />
+        </div>
+
+        <div className="relative z-10 grid gap-10 xl:grid-cols-[1.4fr_0.9fr] xl:items-end">
+          <div>
+            <Badge tone="primary" className="mb-3">
+              Session Control Center
+            </Badge>
+            <h1 className="max-w-4xl text-4xl font-black tracking-tight text-on-surface md:text-5xl xl:text-[3.6rem]">
+              {user?.username
+                ? `${user.username}, keep every watch session on the same beat.`
+                : 'Keep every watch session on the same beat.'}
+            </h1>
+            <p className="mt-5 max-w-2xl text-sm leading-7 text-on-surface-variant md:text-base">
+              Create a room when you want to host a synced viewing session, or jump into an existing room with a code from the group.
+            </p>
+
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
+              <HeroMetric label="Rooms Total" value={String(rooms.length)} />
+              <HeroMetric label="Hosted By You" value={String(ownedRooms)} />
+              <HeroMetric label="Joined As Viewer" value={String(joinedRooms)} />
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            <QuickNote
+              title="How rooms feel"
+              text="Each room keeps the file reference, group readiness and playback state visible so nobody has to guess what happens next."
+            />
+            <QuickNote
+              title="What stays local"
+              text="The app never uploads the actual video file. SyncWatch only verifies local files and synchronizes the shared timeline."
+            />
+          </div>
+        </div>
       </section>
 
-      {flash && (
-        <div className="mb-4 p-4 bg-primary-container/20 border border-primary-container/40 text-primary text-sm flex justify-between items-start">
-          <span>{flash}</span>
-          <button
-            onClick={() => setFlash(null)}
-            className="ml-4 text-on-surface-variant hover:text-on-surface cursor-pointer"
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
+      {(flash || error || roomsError) && (
+        <div className="mt-8 space-y-3">
+          {flash && (
+            <Panel
+              variant="outline"
+              padding="sm"
+              className="rounded-[1.6rem] border-primary-container/35 bg-primary-container/16"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <p className="text-sm text-primary">{flash}</p>
+                <button
+                  onClick={() => setFlash(null)}
+                  className="text-xs uppercase tracking-[0.18em] text-on-surface-variant transition hover:text-on-surface"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </Panel>
+          )}
+
+          {error && (
+            <Panel
+              variant="outline"
+              padding="sm"
+              className="rounded-[1.6rem] border-error/30 bg-error-container/30 text-error"
+            >
+              <p className="text-sm">{error}</p>
+            </Panel>
+          )}
+
+          {roomsError && (
+            <Panel variant="outline" padding="sm" className="rounded-[1.6rem]">
+              <p className="text-sm text-on-surface-variant">{roomsError}</p>
+            </Panel>
+          )}
         </div>
       )}
 
-      {error && (
-        <div className="mb-8 p-4 bg-error-container/20 border border-error/30 text-error text-sm">
-          {error}
-        </div>
-      )}
+      <section className="mt-10 grid gap-4 xl:grid-cols-3">
+        <WorkflowCard
+          icon={<UsersIcon size={18} />}
+          step="01"
+          title="Create or join"
+          text="Open a fresh room as host or enter an existing code from the group."
+        />
+        <WorkflowCard
+          icon={<VideoIcon size={18} />}
+          step="02"
+          title="Match the file"
+          text="Everyone selects the same local video so the room can verify playback compatibility."
+        />
+        <WorkflowCard
+          icon={<ChatBubbleIcon size={18} />}
+          step="03"
+          title="Watch in sync"
+          text="Play, pause and seek from a single shared host timeline with live chat on the side."
+        />
+      </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20">
-        <form onSubmit={handleCreate} className="bg-surface-container p-10">
-          <h2 className="font-bold text-2xl tracking-tight mb-6">Create Room</h2>
-          <div className="space-y-6">
-            <div>
-              <label className="text-[10px] uppercase tracking-widest text-on-surface-variant block mb-2">
-                Room Name
-              </label>
-              <input
+      <section className="mt-10 grid gap-6 xl:grid-cols-2">
+        <ActionCard
+          eyebrow="Host A Session"
+          title="Create a room"
+          description="Choose a room name, become the host and prepare the file reference everyone will match."
+          accent="solid"
+        >
+          <form onSubmit={handleCreate} className="space-y-5">
+            <Field label="Room Name">
+              <Input
                 type="text"
                 value={roomName}
-                onChange={(e) => setRoomName(e.target.value)}
-                className="w-full bg-surface-container-lowest border-b border-outline-variant/20 focus:border-primary-container focus:outline-none text-on-surface py-3 transition-colors"
-                placeholder="e.g. Movie Night"
+                onChange={(event) => setRoomName(event.target.value)}
+                placeholder="Movie Night"
                 required
               />
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-br from-primary-container to-[#0053da] text-on-primary-container font-bold uppercase tracking-widest py-4 text-xs hover:shadow-[0_0_15px_rgba(0,98,255,0.4)] transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
-            >
-              Create Room
-            </button>
-          </div>
-        </form>
+            </Field>
 
-        <form onSubmit={handleJoin} className="bg-surface-container-low p-10">
-          <h2 className="font-bold text-2xl tracking-tight mb-6">Join Room</h2>
-          <div className="space-y-6">
-            <div>
-              <label className="text-[10px] uppercase tracking-widest text-on-surface-variant block mb-2">
-                Room Code
-              </label>
-              <input
+            <Button type="submit" variant="primary" size="lg" fullWidth disabled={isCreating}>
+              {isCreating ? 'Creating...' : 'Create Room'}
+            </Button>
+          </form>
+        </ActionCard>
+
+        <ActionCard
+          eyebrow="Join Existing"
+          title="Enter a room code"
+          description="Paste the 8-character room code from the host and open the synchronized session immediately."
+          accent="outline"
+        >
+          <form onSubmit={handleJoin} className="space-y-5">
+            <Field label="Room Code">
+              <Input
                 type="text"
                 value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                className="w-full bg-surface-container-lowest border-b border-outline-variant/20 focus:border-primary-container focus:outline-none text-on-surface py-3 transition-colors uppercase"
-                placeholder="Enter room code"
+                onChange={(event) => setRoomCode(event.target.value.toUpperCase())}
+                className="uppercase tracking-[0.22em]"
+                placeholder="AB12CD34"
                 maxLength={8}
                 required
               />
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-transparent border border-outline-variant/20 text-on-surface font-bold uppercase tracking-widest py-4 text-xs hover:bg-surface-container-high/20 hover:border-primary-container/50 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
-            >
-              Join Room
-            </button>
-          </div>
-        </form>
-      </div>
+            </Field>
 
-      <section>
-        <h2 className="font-bold text-3xl tracking-tighter mb-2">My Rooms</h2>
-        <p className="text-on-surface-variant text-sm mb-8">Your active and recent rooms.</p>
+            <Button type="submit" variant="secondary" size="lg" fullWidth disabled={isJoining}>
+              {isJoining ? 'Joining...' : 'Join Room'}
+            </Button>
+          </form>
+        </ActionCard>
+      </section>
 
-        {roomsLoading ? (
-          <div className="bg-surface-container-lowest text-center py-12 text-on-surface-variant">
-            Loading your rooms…
+      <section className="mt-12">
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <Badge tone="primary">Your Rooms</Badge>
+            <h2 className="mt-3 text-3xl font-black tracking-tight text-on-surface">
+              Recent activity
+            </h2>
           </div>
-        ) : roomsLoadError ? (
-          <div className="bg-error-container/20 border border-error/30 text-error px-6 py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <div className="font-bold text-sm mb-1">Couldn't load your rooms.</div>
-              <div className="text-xs text-on-surface-variant">
-                The server didn't respond. This doesn't mean you have no rooms.
-              </div>
-            </div>
-            <button
-              onClick={fetchRooms}
-              className="shrink-0 text-[10px] uppercase tracking-widest px-4 py-2 border border-error/50 hover:bg-error/10 transition-colors cursor-pointer"
-            >
-              Retry
-            </button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void fetchRooms()}
+            leadingIcon={<RefreshIcon size={15} />}
+          >
+            Refresh
+          </Button>
+        </div>
+
+        {isLoadingRooms ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-52 animate-pulse rounded-[1.9rem] border border-outline-variant/15 bg-surface-container-low"
+              />
+            ))}
           </div>
         ) : rooms.length === 0 ? (
-          <div className="bg-surface-container-lowest text-center py-12 text-on-surface-variant">
-            No rooms yet. Create one or join with a code.
-          </div>
+          <Panel variant="dashed" padding="lg" className="rounded-[1.9rem] text-center">
+            <h3 className="text-2xl font-black tracking-tight text-on-surface">No rooms yet</h3>
+            <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-on-surface-variant">
+              Start a hosted session or enter a shared code to see your recent room activity here.
+            </p>
+          </Panel>
         ) : (
-          <div className="bg-surface-container-lowest overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-surface-container-low border-b border-outline-variant/10">
-                  <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-on-surface-variant">Room Name</th>
-                  <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-on-surface-variant">Room Code</th>
-                  <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-on-surface-variant">Role</th>
-                  <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-on-surface-variant text-right">Created</th>
-                  <th className="px-8 py-5 text-[10px] uppercase tracking-widest text-on-surface-variant text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/5">
-                {rooms.map((room) => (
-                  <tr
-                    key={room.id}
-                    onClick={() => navigate(`/room/${room.id}`)}
-                    className="hover:bg-surface-container transition-colors cursor-pointer"
-                  >
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-1.5 h-1.5 rounded-full ${room.host_id === user?.id ? 'bg-primary-container shadow-[0_0_8px_rgba(0,98,255,1)]' : 'bg-outline-variant'}`} />
-                        <span className="font-semibold tracking-tight">{room.name}</span>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {rooms.map((room) => {
+              const isHost = room.host_id === user?.id;
+
+              return (
+                <div
+                  key={room.id}
+                  className="group relative overflow-hidden rounded-[1.9rem] border border-outline-variant/15 bg-surface-container-low/78 p-5 text-left shadow-[0_18px_44px_rgba(0,0,0,0.24)] transition hover:-translate-y-1 hover:border-primary-container/30 hover:bg-surface-container"
+                >
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,98,255,0.12),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03)_0%,rgba(255,255,255,0)_40%,rgba(255,255,255,0.04)_100%)] opacity-70" />
+                  <div className="relative z-10">
+                    <div className="mb-5 flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.22em] text-on-surface-variant">
+                          Room
+                        </p>
+                        <h3 className="mt-2 text-2xl font-black tracking-tight text-on-surface">
+                          {room.name}
+                        </h3>
                       </div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className="text-xs tracking-wider bg-surface-container px-3 py-1 text-on-surface-variant">
-                        {room.room_code}
-                      </span>
-                    </td>
-                    <td className="px-8 py-6">
-                      {room.host_id === user?.id ? (
-                        <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 border border-primary-container text-primary-container">
-                          Host
-                        </span>
-                      ) : (
-                        <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 border border-outline-variant/30 text-on-surface-variant">
-                          Viewer
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-8 py-6 text-right text-xs text-on-surface-variant">
-                      {new Date(room.created_at).toLocaleDateString()}
-                    </td>
-                    <td
-                      className="px-8 py-6 text-right"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {room.host_id === user?.id && (
+
+                      <Badge tone={isHost ? 'primary' : 'neutral'}>
+                        {isHost ? 'Host' : 'Viewer'}
+                      </Badge>
+                    </div>
+
+                    <div className="grid gap-3 text-sm text-on-surface-variant">
+                      <Panel variant="muted" padding="sm" className="rounded-[1.2rem]">
+                        <p className="text-[10px] uppercase tracking-[0.18em] text-on-surface-variant">
+                          Room Code
+                        </p>
+                        <p className="mt-2 font-mono text-xs tracking-[0.24em] text-primary">
+                          {room.room_code}
+                        </p>
+                      </Panel>
+
+                      <div className="flex items-center justify-between px-1">
+                        <span>Created</span>
+                        <span>{new Date(room.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+                      <button
+                        onClick={() => navigate(`/room/${room.id}`)}
+                        className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-primary transition group-hover:text-white"
+                      >
+                        Open room
+                        <ArrowUpRightIcon size={14} />
+                      </button>
+
+                      {isHost && (
                         <button
-                          onClick={() => handleDelete(room.id)}
-                          className="text-[10px] uppercase tracking-widest text-error hover:text-on-surface cursor-pointer"
-                          title="Delete room"
+                          onClick={() => void handleDelete(room.id)}
+                          className="text-[11px] font-bold uppercase tracking-[0.22em] text-error transition hover:text-on-surface"
                         >
                           Delete
                         </button>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
     </Layout>
+  );
+}
+
+function HeroMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <Panel variant="muted" padding="sm" className="rounded-[1.5rem]">
+      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-on-surface-variant">
+        {label}
+      </p>
+      <p className="mt-3 text-3xl font-black tracking-tight text-on-surface">{value}</p>
+    </Panel>
+  );
+}
+
+function QuickNote({ title, text }: { title: string; text: string }) {
+  return (
+    <Panel variant="muted" padding="md">
+      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">{title}</p>
+      <p className="mt-3 text-sm leading-7 text-on-surface-variant">{text}</p>
+    </Panel>
+  );
+}
+
+function WorkflowCard({
+  icon,
+  step,
+  title,
+  text,
+}: {
+  icon: ReactNode;
+  step: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <Panel variant="default" padding="md">
+      <div className="flex items-center justify-between gap-4">
+        <span className="flex h-10 w-10 items-center justify-center rounded-full border border-primary-container/18 bg-primary-container/10 text-primary">
+          {icon}
+        </span>
+        <Badge tone="neutral">{step}</Badge>
+      </div>
+      <h3 className="mt-4 text-xl font-black tracking-tight text-on-surface">{title}</h3>
+      <p className="mt-3 text-sm leading-7 text-on-surface-variant">{text}</p>
+    </Panel>
+  );
+}
+
+function ActionCard({
+  eyebrow,
+  title,
+  description,
+  accent,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  accent: 'solid' | 'outline';
+  children: ReactNode;
+}) {
+  return (
+    <Panel
+      variant={accent === 'solid' ? 'default' : 'outline'}
+      padding="lg"
+      className="rounded-[2rem]"
+    >
+      <Badge tone="primary">{eyebrow}</Badge>
+      <h3 className="mt-4 text-3xl font-black tracking-tight text-on-surface">{title}</h3>
+      <p className="mt-3 max-w-xl text-sm leading-7 text-on-surface-variant">{description}</p>
+      <div className="mt-6">{children}</div>
+    </Panel>
   );
 }
