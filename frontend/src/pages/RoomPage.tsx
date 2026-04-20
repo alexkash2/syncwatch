@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { BrandMarkIcon } from '../components/ui/icons';
 import { StatePanel } from '../components/ui/StatePanel';
 import { useAuth } from '../hooks/useAuth';
+import { usePreferences } from '../hooks/usePreferences';
 import { useUi } from '../hooks/useUi';
 import { useLoadRoom } from '../hooks/useLoadRoom';
 import { useRoomWsHandler } from '../hooks/useRoomWsHandler';
@@ -39,6 +40,7 @@ export function RoomPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { confirm, pushToast } = useUi();
+  const { preferences } = usePreferences();
 
   const participants = useRoomStore((state) => state.participants);
   const setParticipants = useRoomStore((state) => state.setParticipants);
@@ -287,6 +289,20 @@ export function RoomPage() {
       if (!confirmed) {
         return;
       }
+    } else if (preferences.confirmViewerLeave) {
+      const confirmed = await confirm({
+        eyebrow: 'Leave Room',
+        title: 'Leave this synced session?',
+        description:
+          'You will return to the dashboard and can rejoin later from your recent rooms if the session is still active.',
+        confirmLabel: 'Leave room',
+        cancelLabel: 'Stay here',
+        tone: 'warning',
+      });
+
+      if (!confirmed) {
+        return;
+      }
     }
 
     try {
@@ -301,7 +317,15 @@ export function RoomPage() {
     } finally {
       navigate('/');
     }
-  }, [confirm, navigate, pushToast, room?.host_id, roomId, user?.id]);
+  }, [
+    confirm,
+    navigate,
+    preferences.confirmViewerLeave,
+    pushToast,
+    room?.host_id,
+    roomId,
+    user?.id,
+  ]);
 
   useEffect(() => {
     const previousConnectionState = previousConnectionStateRef.current;

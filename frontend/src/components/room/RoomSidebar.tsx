@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { ChatPanel } from './ChatPanel';
 import { ParticipantList } from './ParticipantList';
 import { RoomTabs } from './RoomTabs';
+import { usePreferences } from '../../hooks/usePreferences';
 import type { ChatMessage, WsParticipant } from '../../types/ws';
 
 type ConnectionState = 'connected' | 'connecting' | 'reconnecting';
@@ -38,6 +39,7 @@ export function RoomSidebar({
   const readyCount = participants.filter((participant) => participant.is_ready).length;
   const connectionMeta = getConnectionMeta(connectionState);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const { preferences } = usePreferences();
 
   useEffect(() => {
     if (!sidebarOpen) {
@@ -71,9 +73,10 @@ export function RoomSidebar({
         aria-label="Room sidebar"
         aria-labelledby="room-sidebar-title"
         className={`
-          fixed right-3 top-[4.75rem] bottom-3 z-50 w-[min(100vw-1.5rem,24rem)] rounded-[1.75rem]
+          fixed right-3 top-[4.75rem] bottom-3 z-50 rounded-[1.75rem]
           transition-all duration-300 md:static md:top-auto md:bottom-auto md:right-auto
-          md:z-auto md:w-[22rem] md:translate-x-0
+          ${preferences.compactSidebar ? 'w-[min(100vw-1.5rem,21rem)] md:w-[19rem]' : 'w-[min(100vw-1.5rem,24rem)] md:w-[22rem]'}
+          md:z-auto md:translate-x-0
           ${
             sidebarOpen
               ? 'translate-x-0 opacity-100'

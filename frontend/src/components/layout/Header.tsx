@@ -1,10 +1,12 @@
 import { Link } from 'react-router';
 import { useAuth } from '../../hooks/useAuth';
+import { usePreferences } from '../../hooks/usePreferences';
 import { Button } from '../ui/Button';
-import { BrandMarkIcon } from '../ui/icons';
+import { BrandMarkIcon, SettingsSlidersIcon } from '../ui/icons';
 
 export function Header() {
   const { user, logout } = useAuth();
+  const { openPreferences } = usePreferences();
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 px-4 pt-4 md:px-8 xl:px-10">
@@ -42,6 +44,16 @@ export function Header() {
                 </p>
               </div>
             </div>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={openPreferences}
+              leadingIcon={<SettingsSlidersIcon size={15} />}
+              aria-label="Open display and room settings"
+            >
+              <span className="hidden sm:inline">Settings</span>
+            </Button>
 
             <Button variant="ghost" size="sm" onClick={logout}>
               Log out

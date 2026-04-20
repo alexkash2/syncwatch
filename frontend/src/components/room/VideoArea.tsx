@@ -1,8 +1,10 @@
 import { Button } from '../ui/Button';
 import { CheckIcon, RefreshIcon, WarningCircleIcon } from '../ui/icons';
+import { usePreferences } from '../../hooks/usePreferences';
 import { FileSelector } from './FileSelector';
 import { HostDisconnectOverlay } from './HostDisconnectOverlay';
 import { PlaybackControls } from './PlaybackControls';
+import { RoomOnboarding } from './RoomOnboarding';
 import { VideoPlayer } from './VideoPlayer';
 import type { FileVerifyResult, RoomStatus } from '../../types/ws';
 
@@ -67,9 +69,12 @@ export function VideoArea({
   onVerifyRequest,
   verifyResult,
 }: VideoAreaProps) {
+  const { preferences } = usePreferences();
   const statusMeta = getRoomStatusMeta(roomStatus, isHost);
   const connectionMeta = getConnectionMeta(connectionState);
   const everyoneReady = totalParticipants > 0 && readyParticipants === totalParticipants;
+  const showCompactOnboarding =
+    preferences.showRoomOnboarding && (!everyoneReady || !videoReady || roomStatus === 'waiting_ready');
 
   return (
     <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-outline-variant/15 bg-black/60 shadow-[0_28px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
@@ -105,6 +110,21 @@ export function VideoArea({
 
         {fileUrl ? (
           <>
+            {showCompactOnboarding && (
+              <div className="relative z-20 px-4 pt-4 md:px-6">
+                <RoomOnboarding
+                  compact
+                  isHost={isHost}
+                  roomStatus={roomStatus}
+                  referenceFileName={referenceFileName}
+                  hasLocalFile={Boolean(fileUrl)}
+                  videoReady={videoReady}
+                  readyParticipants={readyParticipants}
+                  totalParticipants={totalParticipants}
+                />
+              </div>
+            )}
+
             <div className="relative min-h-0 flex-1">
               <VideoPlayer
                 ref={videoRef}
@@ -215,6 +235,8 @@ export function VideoArea({
             isHost={isHost}
             roomStatus={roomStatus}
             referenceFileName={referenceFileName}
+            readyParticipants={readyParticipants}
+            totalParticipants={totalParticipants}
             onFileVerified={onFileVerified}
             onVerifyRequest={onVerifyRequest}
             verifyResult={verifyResult}

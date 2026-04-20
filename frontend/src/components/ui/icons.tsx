@@ -268,3 +268,19 @@ export function KeyboardIcon(props: IconProps) {
     </BaseIcon>
   );
 }
+
+export function SettingsSlidersIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path
+        d="M6 6.5h12M6 12h12M6 17.5h12"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <circle cx="9" cy="6.5" r="1.8" fill="currentColor" />
+      <circle cx="15.5" cy="12" r="1.8" fill="currentColor" />
+      <circle cx="11.5" cy="17.5" r="1.8" fill="currentColor" />
+    </BaseIcon>
+  );
+}

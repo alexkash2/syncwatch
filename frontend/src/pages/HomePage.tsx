@@ -27,6 +27,7 @@ import {
 } from '../components/ui/icons';
 import { Panel } from '../components/ui/Panel';
 import { StatePanel } from '../components/ui/StatePanel';
+import { usePreferences } from '../hooks/usePreferences';
 import { useUi } from '../hooks/useUi';
 import { useAuth } from '../hooks/useAuth';
 import type { HomeArrivalNotice, HomeLocationState } from '../types/navigation';
@@ -36,6 +37,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { preferences } = usePreferences();
   const { confirm, pushToast } = useUi();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomName, setRoomName] = useState('');
@@ -228,8 +230,11 @@ export function HomePage() {
   }, [pushToast]);
 
   const scrollToSection = useCallback((sectionId: string) => {
-    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
+    document.getElementById(sectionId)?.scrollIntoView({
+      behavior: preferences.reduceMotion ? 'auto' : 'smooth',
+      block: 'start',
+    });
+  }, [preferences.reduceMotion]);
 
   return (
     <Layout>

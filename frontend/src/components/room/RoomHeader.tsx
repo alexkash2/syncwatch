@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { BrandMarkIcon, CheckIcon, CopyIcon, LayoutPanelIcon } from '../ui/icons';
+import {
+  BrandMarkIcon,
+  CheckIcon,
+  CopyIcon,
+  LayoutPanelIcon,
+  SettingsSlidersIcon,
+} from '../ui/icons';
+import { usePreferences } from '../../hooks/usePreferences';
 import { useUi } from '../../hooks/useUi';
 
 type ConnectionState = 'connected' | 'connecting' | 'reconnecting';
@@ -29,6 +36,7 @@ export function RoomHeader({
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const copyTimerRef = useRef<number | null>(null);
   const { pushToast } = useUi();
+  const { openPreferences } = usePreferences();
 
   useEffect(() => {
     return () => {
@@ -119,6 +127,16 @@ export function RoomHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-2 md:gap-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={openPreferences}
+          leadingIcon={<SettingsSlidersIcon size={15} />}
+          aria-label="Open room preferences"
+        >
+          <span className="hidden sm:inline">Settings</span>
+        </Button>
+
         <Button
           variant="ghost"
           size="sm"

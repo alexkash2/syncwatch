@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { ChatMessage } from '../../types/ws';
+import { usePreferences } from '../../hooks/usePreferences';
 import { Button } from '../ui/Button';
 import { ChatBubbleIcon, RefreshIcon } from '../ui/icons';
 import { Panel } from '../ui/Panel';
@@ -61,6 +62,7 @@ export function ChatPanel({
   loadError = false,
   onRetryLoad,
 }: ChatPanelProps) {
+  const { preferences } = usePreferences();
   const [input, setInput] = useState('');
   const [sendError, setSendError] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -77,10 +79,12 @@ export function ChatPanel({
   useEffect(() => {
     const latest = messages[messages.length - 1]?.id;
     if (latest && latest !== lastMessageIdRef.current && atBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      bottomRef.current?.scrollIntoView({
+        behavior: preferences.reduceMotion ? 'auto' : 'smooth',
+      });
     }
     lastMessageIdRef.current = latest;
-  }, [messages]);
+  }, [messages, preferences.reduceMotion]);
 
   const handleScroll = useCallback(async () => {
     const element = scrollRef.current;

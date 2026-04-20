@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { computeFileHash, getVideoDurationMs } from '../../utils/fileHash';
 import type { FileVerifyResult, RoomStatus } from '../../types/ws';
+import { usePreferences } from '../../hooks/usePreferences';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { VideoIcon } from '../ui/icons';
 import { Panel } from '../ui/Panel';
+import { RoomOnboarding } from './RoomOnboarding';
 
 export type FileStatus =
   | 'idle'
@@ -22,6 +24,8 @@ interface FileSelectorProps {
   isHost: boolean;
   roomStatus: RoomStatus;
   referenceFileName: string | null;
+  readyParticipants: number;
+  totalParticipants: number;
 }
 
 export function FileSelector({
@@ -31,7 +35,10 @@ export function FileSelector({
   isHost,
   roomStatus,
   referenceFileName,
+  readyParticipants,
+  totalParticipants,
 }: FileSelectorProps) {
+  const { preferences } = usePreferences();
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<FileStatus>('idle');
   const [fileName, setFileName] = useState('');
@@ -196,20 +203,34 @@ export function FileSelector({
             )}
           </div>
 
-          <Panel variant="outline" padding="md" className="rounded-[1.75rem]">
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
-              Stage Status
-            </p>
-            <div className="mt-4 space-y-4">
-              <StatusRow
-                label="Current phase"
-                value={copy.phaseLabel}
-                accent={status === 'hashing' || status === 'verifying'}
+          <div className="space-y-4">
+            <Panel variant="outline" padding="md" className="rounded-[1.75rem]">
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
+                Stage Status
+              </p>
+              <div className="mt-4 space-y-4">
+                <StatusRow
+                  label="Current phase"
+                  value={copy.phaseLabel}
+                  accent={status === 'hashing' || status === 'verifying'}
+                />
+                <StatusRow label="Reference file" value={referenceFileName || 'Not chosen yet'} />
+                <StatusRow label="Selected file" value={fileName || 'Nothing selected'} />
+              </div>
+            </Panel>
+
+            {preferences.showRoomOnboarding && (
+              <RoomOnboarding
+                isHost={isHost}
+                roomStatus={roomStatus}
+                referenceFileName={referenceFileName}
+                hasLocalFile={status === 'verified'}
+                videoReady={false}
+                readyParticipants={readyParticipants}
+                totalParticipants={totalParticipants}
               />
-              <StatusRow label="Reference file" value={referenceFileName || 'Not chosen yet'} />
-              <StatusRow label="Selected file" value={fileName || 'Nothing selected'} />
-            </div>
-          </Panel>
+            )}
+          </div>
         </div>
 
         <input

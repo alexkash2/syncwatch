@@ -15,12 +15,12 @@ export interface FileInfoPayload {
 }
 
 export async function createRoom(name: string) {
-  const response = await apiClient.post<Room>('/rooms', { name });
+  const response = await apiClient.post<Room>('/rooms/', { name });
   return response.data;
 }
 
 export async function listRooms(page = 1, size = 20) {
-  const response = await apiClient.get<RoomListResponse>('/rooms', {
+  const response = await apiClient.get<RoomListResponse>('/rooms/', {
     params: { page, size },
   });
 

@@ -16,6 +16,7 @@ import {
   RewindIcon,
   VolumeIcon,
 } from '../ui/icons';
+import { usePreferences } from '../../hooks/usePreferences';
 
 interface PlaybackControlsProps {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -39,6 +40,7 @@ export function PlaybackControls({
   videoReady,
   onNonHostControlAttempt,
 }: PlaybackControlsProps) {
+  const { preferences } = usePreferences();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -259,11 +261,17 @@ export function PlaybackControls({
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Keyboard shortcuts">
-          <HotkeyChip label="Space" icon={<KeyboardIcon size={13} />} />
-          <HotkeyChip label="Left/Right" />
-          <HotkeyChip label="F" />
-        </div>
+        {preferences.showHotkeys && (
+          <div
+            className="flex flex-wrap items-center gap-2"
+            role="group"
+            aria-label="Keyboard shortcuts"
+          >
+            <HotkeyChip label="Space" icon={<KeyboardIcon size={13} />} />
+            <HotkeyChip label="Left/Right" />
+            <HotkeyChip label="F" />
+          </div>
+        )}
       </div>
 
       <div className="mb-4 w-full">
