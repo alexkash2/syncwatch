@@ -1,17 +1,42 @@
-import type { LoginRequest, RegisterRequest, TokenResponse, User } from '../types/auth';
-import client from './client';
+import { apiClient } from './client';
+import type {
+  LoginRequest,
+  RegisterRequest,
+  TokenResponse,
+  User,
+} from '../types/auth';
 
-export async function register(data: RegisterRequest): Promise<User> {
-  const res = await client.post<User>('/auth/register', data);
-  return res.data;
+interface WsTicketResponse {
+  ticket: string;
 }
 
-export async function login(data: LoginRequest): Promise<TokenResponse> {
-  const res = await client.post<TokenResponse>('/auth/login', data);
-  return res.data;
+export async function register(data: RegisterRequest) {
+  const response = await apiClient.post<User>('/auth/register', data);
+  return response.data;
 }
 
-export async function getMe(): Promise<User> {
-  const res = await client.get<User>('/auth/me');
-  return res.data;
+export async function login(data: LoginRequest) {
+  const response = await apiClient.post<TokenResponse>('/auth/login', data);
+  return response.data;
+}
+
+export async function refreshTokens(refreshToken: string) {
+  const response = await apiClient.post<TokenResponse>('/auth/refresh', {
+    refresh_token: refreshToken,
+  });
+
+  return response.data;
+}
+
+export async function getMe() {
+  const response = await apiClient.get<User>('/auth/me');
+  return response.data;
+}
+
+export async function createWsTicket(roomId: string) {
+  const response = await apiClient.post<WsTicketResponse>('/auth/ws-ticket', {
+    room_id: roomId,
+  });
+
+  return response.data.ticket;
 }

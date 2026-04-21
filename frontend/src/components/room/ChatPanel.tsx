@@ -1,5 +1,10 @@
 import { memo, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { ChatMessage } from '../../types/ws';
+import { usePreferences } from '../../hooks/usePreferences';
+import { Button } from '../ui/Button';
+import { ChatBubbleIcon, RefreshIcon } from '../ui/icons';
+import { Panel } from '../ui/Panel';
+import { StatePanel } from '../ui/StatePanel';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -7,14 +12,10 @@ interface ChatPanelProps {
   currentUserId: string;
   onLoadMore?: () => Promise<boolean> | void;
   hasMore?: boolean;
-  /** True if the last history fetch (initial or paginated) failed. */
   loadError?: boolean;
-  /** Retry the initial history fetch. */
   onRetryLoad?: () => void | Promise<void>;
 }
 
-// Memoized row — the heavy case is long histories where unchanged rows
-// shouldn't re-render when a single new message arrives.
 const ChatRow = memo(function ChatRow({
   msg,
   currentUserId,
@@ -22,24 +23,32 @@ const ChatRow = memo(function ChatRow({
   msg: ChatMessage;
   currentUserId: string;
 }) {
+  const isCurrentUser = msg.user_id === currentUserId;
+
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between items-baseline">
+    <div
+      className={`rounded-[1.35rem] border px-4 py-3 ${
+        isCurrentUser
+          ? 'border-primary-container/20 bg-primary-container/10'
+          : 'border-outline-variant/12 bg-surface-container-lowest/80'
+      }`}
+    >
+      <div className="flex items-baseline justify-between gap-3">
         <span
-          className={`font-bold text-[10px] tracking-widest uppercase ${
-            msg.user_id === currentUserId ? 'text-primary' : 'text-on-surface-variant'
+          className={`text-[10px] font-bold uppercase tracking-[0.22em] ${
+            isCurrentUser ? 'text-primary' : 'text-on-surface-variant'
           }`}
         >
-          {msg.username}
+          {isCurrentUser ? 'You' : msg.username}
         </span>
-        <span className="text-[9px] text-on-surface-variant/50">
+        <span className="text-[10px] text-on-surface-variant/60">
           {new Date(msg.created_at).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
           })}
         </span>
       </div>
-      <p className="text-sm leading-relaxed text-on-surface/90">{msg.content}</p>
+      <p className="mt-2 text-sm leading-7 text-on-surface/90">{msg.content}</p>
     </div>
   );
 });
@@ -53,6 +62,7 @@ export function ChatPanel({
   loadError = false,
   onRetryLoad,
 }: ChatPanelProps) {
+  const { preferences } = usePreferences();
   const [input, setInput] = useState('');
   const [sendError, setSendError] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -62,39 +72,40 @@ export function ChatPanel({
   const atBottomRef = useRef(true);
   const sendErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Cancel any pending "send failed" auto-hide timer on unmount so we don't
-  // call setState on an unmounted component (React warns; more importantly,
-  // leaking timers across fast navigations is just sloppy).
   useEffect(() => {
     return () => clearTimeout(sendErrorTimerRef.current);
   }, []);
 
-  // Auto-scroll to bottom only for NEW incoming messages and only if the user
-  // is already near the bottom (don't yank them around while they read history).
   useEffect(() => {
     const latest = messages[messages.length - 1]?.id;
     if (latest && latest !== lastMessageIdRef.current && atBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      bottomRef.current?.scrollIntoView({
+        behavior: preferences.reduceMotion ? 'auto' : 'smooth',
+      });
     }
     lastMessageIdRef.current = latest;
-  }, [messages]);
+  }, [messages, preferences.reduceMotion]);
 
   const handleScroll = useCallback(async () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const element = scrollRef.current;
+    if (!element) {
+      return;
+    }
 
-    if (el.scrollTop < 40 && hasMore && !loadingMore && onLoadMore) {
+    atBottomRef.current =
+      element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+
+    if (element.scrollTop < 40 && hasMore && !loadingMore && onLoadMore) {
       setLoadingMore(true);
-      // Preserve scroll offset after prepending older messages.
-      const prevHeight = el.scrollHeight;
+      const previousHeight = element.scrollHeight;
+
       try {
         await onLoadMore();
       } finally {
         requestAnimationFrame(() => {
           if (scrollRef.current) {
             scrollRef.current.scrollTop =
-              scrollRef.current.scrollHeight - prevHeight;
+              scrollRef.current.scrollHeight - previousHeight;
           }
           setLoadingMore(false);
         });
@@ -102,10 +113,13 @@ export function ChatPanel({
     }
   }, [hasMore, loadingMore, onLoadMore]);
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
     const content = input.trim();
-    if (!content) return;
+    if (!content) {
+      return;
+    }
+
     const sent = onSend(content);
     if (sent) {
       setInput('');
@@ -117,74 +131,153 @@ export function ChatPanel({
     }
   };
 
+  const trimmedInput = input.trim();
+
   return (
-    <div className="flex flex-col h-full">
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 space-y-4"
-      >
-        {loadError && messages.length === 0 && (
-          <div className="bg-error-container/20 border border-error/30 text-error p-3 text-xs flex flex-col gap-2">
-            <span>Couldn't load chat history.</span>
-            {onRetryLoad && (
-              <button
-                onClick={onRetryLoad}
-                className="self-start text-[10px] uppercase tracking-widest underline hover:no-underline cursor-pointer"
-              >
-                Retry
-              </button>
-            )}
-          </div>
-        )}
-        {loadError && messages.length > 0 && (
-          <div className="text-center text-[10px] text-error">
-            Couldn't load earlier messages.{' '}
-            {onRetryLoad && (
-              <button
-                onClick={onRetryLoad}
-                className="underline hover:no-underline cursor-pointer"
-              >
-                Retry
-              </button>
-            )}
-          </div>
-        )}
-        {loadingMore && (
-          <div className="text-center text-[10px] text-on-surface-variant/60">
-            Loading earlier messages…
-          </div>
-        )}
-        {!hasMore && messages.length > 0 && (
-          <div className="text-center text-[10px] text-on-surface-variant/40">
-            Beginning of conversation
-          </div>
-        )}
-        {messages.map((msg) => (
-          <ChatRow key={msg.id} msg={msg} currentUserId={currentUserId} />
-        ))}
-        <div ref={bottomRef} />
+    <div className="flex h-full flex-col">
+      <div className="border-b border-outline-variant/10 px-4 py-4">
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
+          Live Chat
+        </p>
+        <p className="mt-2 text-sm text-on-surface-variant">
+          Messages appear instantly for everyone in the room.
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 border-t border-outline-variant/10">
-        {sendError && (
-          <p className="text-error text-[10px] mb-2">Not connected. Message not sent.</p>
-        )}
-        <div className="relative">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="w-full bg-surface-container-low border-b border-outline-variant/20 focus:border-primary-container focus:outline-none text-sm py-3 px-4 text-on-surface transition-colors"
-            placeholder="Type a message..."
-            maxLength={2000}
+      <div
+        ref={scrollRef}
+        onScroll={() => void handleScroll()}
+        className="flex-1 overflow-y-auto px-4 py-4"
+        aria-busy={loadingMore}
+      >
+        {loadError && messages.length === 0 ? (
+          <StatePanel
+            eyebrow="Chat History"
+            title="Couldn't load previous messages"
+            description="The live room is still available, but earlier chat history could not be restored right now."
+            icon={<RefreshIcon size={22} />}
+            tone="danger"
+            className="mx-auto max-w-sm"
+            actions={
+              onRetryLoad ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void onRetryLoad()}
+                  leadingIcon={<RefreshIcon size={14} />}
+                >
+                  Retry
+                </Button>
+              ) : undefined
+            }
           />
-          <button
-            type="submit"
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+        ) : messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-center">
+            <StatePanel
+              eyebrow="Live Chat"
+              title="No messages yet"
+              description="Start the conversation while everyone is matching the file and getting ready."
+              icon={<ChatBubbleIcon size={22} />}
+              className="max-w-sm"
+            />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {loadError && (
+              <Panel
+                variant="outline"
+                padding="sm"
+                className="rounded-[1.35rem] border-error/28 bg-error-container/25"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs leading-6 text-error">
+                    Earlier chat history could not be loaded.
+                  </p>
+                  {onRetryLoad && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void onRetryLoad()}
+                      leadingIcon={<RefreshIcon size={14} />}
+                    >
+                      Retry
+                    </Button>
+                  )}
+                </div>
+              </Panel>
+            )}
+
+            {loadingMore && (
+              <div
+                className="text-center text-[11px] text-on-surface-variant/60"
+                role="status"
+                aria-live="polite"
+              >
+                Loading earlier messages...
+              </div>
+            )}
+
+            {!hasMore && (
+              <div className="text-center text-[11px] text-on-surface-variant/40" role="status">
+                Conversation starts here
+              </div>
+            )}
+
+            <div
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions text"
+              aria-label="Room chat messages"
+              className="space-y-4"
+            >
+              {messages.map((msg) => (
+                <ChatRow key={msg.id} msg={msg} currentUserId={currentUserId} />
+              ))}
+              <div ref={bottomRef} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={handleSubmit} className="border-t border-outline-variant/10 p-4">
+        {sendError && (
+          <Panel
+            id="room-chat-error"
+            variant="outline"
+            padding="sm"
+            className="mb-3 rounded-[1.35rem] border-error/28 bg-error-container/25"
+            role="alert"
           >
-            ▸
-          </button>
+            <p className="text-[11px] text-error">You are offline right now. Message not sent.</p>
+          </Panel>
+        )}
+
+        <div className="rounded-[1.35rem] border border-outline-variant/15 bg-surface-container-lowest/80 p-2">
+          <label htmlFor="room-chat-input" className="sr-only">
+            Type a chat message
+          </label>
+          <div className="flex items-end gap-2">
+            <input
+              id="room-chat-input"
+              type="text"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm text-on-surface outline-none placeholder:text-on-surface-variant/40"
+              placeholder="Type a message..."
+              maxLength={2000}
+              aria-label="Type a chat message"
+              aria-invalid={sendError}
+              aria-describedby={sendError ? 'room-chat-error' : undefined}
+            />
+            <button
+              type="submit"
+              disabled={!trimmedInput}
+              className="rounded-xl bg-primary-container px-4 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-on-primary-container transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:brightness-100"
+              aria-label="Send chat message"
+            >
+              Send
+            </button>
+          </div>
         </div>
       </form>
     </div>

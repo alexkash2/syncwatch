@@ -1,5 +1,12 @@
-import { useRef, useState, useEffect } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { computeFileHash, getVideoDurationMs } from '../../utils/fileHash';
+import type { FileVerifyResult, RoomStatus } from '../../types/ws';
+import { usePreferences } from '../../hooks/usePreferences';
+import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
+import { VideoIcon } from '../ui/icons';
+import { Panel } from '../ui/Panel';
+import { RoomOnboarding } from './RoomOnboarding';
 
 export type FileStatus =
   | 'idle'
@@ -13,19 +20,12 @@ export type FileStatus =
 interface FileSelectorProps {
   onFileVerified: (fileUrl: string) => void;
   onVerifyRequest: (hash: string, size: number, durationMs: number, fileName: string) => void;
-  /** Server response for the last verify request. `file_hash` is the hash the
-   * server is replying about — we use it to discard late responses for files
-   * the user has already replaced. */
-  verifyResult: {
-    match: boolean;
-    reason?: string;
-    file_version?: number;
-    file_hash?: string;
-  } | null;
+  verifyResult: FileVerifyResult | null;
   isHost: boolean;
-  /** True while the host hasn't selected a reference file yet. Non-hosts should
-   * see a "waiting for host" state instead of being invited to pick a file. */
-  hostFilePending?: boolean;
+  roomStatus: RoomStatus;
+  referenceFileName: string | null;
+  readyParticipants: number;
+  totalParticipants: number;
 }
 
 export function FileSelector({
@@ -33,41 +33,55 @@ export function FileSelector({
   onVerifyRequest,
   verifyResult,
   isHost,
-  hostFilePending = false,
+  roomStatus,
+  referenceFileName,
+  readyParticipants,
+  totalParticipants,
 }: FileSelectorProps) {
+  const { preferences } = usePreferences();
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<FileStatus>('idle');
   const [fileName, setFileName] = useState('');
-  // Track which request the current verifyResult belongs to
   const requestNonce = useRef(0);
-  const pendingNonce = useRef(0);
-  const pendingFile = useRef<{ url: string; hash: string; size: number; durationMs: number } | null>(null);
+  const pendingFile = useRef<{
+    url: string;
+    hash: string;
+    size: number;
+    durationMs: number;
+  } | null>(null);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  useEffect(() => {
+    return () => {
+      if (pendingFile.current) {
+        URL.revokeObjectURL(pendingFile.current.url);
+      }
+    };
+  }, []);
 
-    // `accept="video/*"` only filters the picker — users can still drop a
-    // non-video. Give this its own status so the UI doesn't misattribute
-    // the failure to "browser can't read this format".
-    if (file.type && !file.type.startsWith('video/')) {
-      setFileName(file.name);
-      setStatus('not_video');
-      if (inputRef.current) inputRef.current.value = '';
+  const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
       return;
     }
 
-    // Increment nonce to invalidate any pending verify result
-    requestNonce.current++;
-    const myNonce = requestNonce.current;
-    // Revoke any blob URL left over from a prior in-flight selection before
-    // we drop the reference, otherwise we leak it on fast re-selects.
+    requestNonce.current += 1;
+    const currentNonce = requestNonce.current;
+
     if (pendingFile.current) {
       URL.revokeObjectURL(pendingFile.current.url);
       pendingFile.current = null;
     }
 
     setFileName(file.name);
+
+    if (file.type && !file.type.startsWith('video/')) {
+      setStatus('not_video');
+      if (inputRef.current) {
+        inputRef.current.value = '';
+      }
+      return;
+    }
+
     setStatus('hashing');
 
     try {
@@ -76,168 +90,148 @@ export function FileSelector({
         getVideoDurationMs(file),
       ]);
 
-      // Check if user selected another file while we were hashing
-      if (myNonce !== requestNonce.current) return;
+      if (currentNonce !== requestNonce.current) {
+        return;
+      }
 
       const fileUrl = URL.createObjectURL(file);
       pendingFile.current = { url: fileUrl, hash, size: file.size, durationMs };
-      pendingNonce.current = myNonce;
-
       setStatus('verifying');
       onVerifyRequest(hash, file.size, durationMs, file.name);
     } catch {
-      if (myNonce === requestNonce.current) {
+      if (currentNonce === requestNonce.current) {
         setStatus('error');
       }
     }
 
-    // Reset input so same file can be re-selected
-    if (inputRef.current) inputRef.current.value = '';
+    if (inputRef.current) {
+      inputRef.current.value = '';
+    }
   };
 
-  // Revoke any in-flight blob URL if the selector unmounts mid-verify.
   useEffect(() => {
-    return () => {
-      if (pendingFile.current) {
-        URL.revokeObjectURL(pendingFile.current.url);
-        pendingFile.current = null;
-      }
-    };
-  }, []);
-
-  // Handle verify result — setState driven by prop change, safe pattern
-  useEffect(() => {
-    if (!verifyResult || status !== 'verifying') return;
-    // Discard a late response for a file the user already replaced. The
-    // server echoes the hash it processed; if it doesn't match what we're
-    // currently waiting on, the response belongs to an older request.
-    if (
-      verifyResult.file_hash &&
-      pendingFile.current &&
-      verifyResult.file_hash !== pendingFile.current.hash
-    ) {
+    if (!verifyResult || status !== 'verifying') {
       return;
     }
 
-    if (verifyResult.match && pendingFile.current) {
-      const { url } = pendingFile.current;
-      setStatus('verified'); // eslint-disable-line react-hooks/set-state-in-effect
-      onFileVerified(url);
-      pendingFile.current = null;
-    } else if (!verifyResult.match) {
-      // Back to idle if the reason is "host hasn't chosen a file" — that's
-      // semantically waiting, not a file mismatch.
-      const waitingForHost =
-        !!verifyResult.reason &&
-        verifyResult.reason.toLowerCase().includes('has not selected');
-      setStatus(waitingForHost ? 'idle' : 'mismatch');
-      if (pendingFile.current) {
-        URL.revokeObjectURL(pendingFile.current.url);
-        pendingFile.current = null;
+    const timeoutId = window.setTimeout(() => {
+      if (
+        verifyResult.file_hash &&
+        pendingFile.current &&
+        verifyResult.file_hash !== pendingFile.current.hash
+      ) {
+        return;
       }
-    }
-  }, [verifyResult, status, onFileVerified]);
 
-  // Non-hosts can't pick a file until the host has set the reference.
-  const isWaitingForHost = !isHost && hostFilePending;
+      if (verifyResult.match && pendingFile.current) {
+        const { url } = pendingFile.current;
+        setStatus('verified');
+        pendingFile.current = null;
+        onFileVerified(url);
+        return;
+      }
+
+      if (!verifyResult.match) {
+        const waitingForHost =
+          !!verifyResult.reason &&
+          verifyResult.reason.toLowerCase().includes('has not selected');
+
+        setStatus(waitingForHost ? 'idle' : 'mismatch');
+
+        if (pendingFile.current) {
+          URL.revokeObjectURL(pendingFile.current.url);
+          pendingFile.current = null;
+        }
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [onFileVerified, status, verifyResult]);
+
+  const isWaitingForHost = !isHost && !referenceFileName && roomStatus === 'waiting_file';
+  const copy = getSelectorCopy({
+    status,
+    isHost,
+    roomStatus,
+    referenceFileName,
+    verifyReason: verifyResult?.reason,
+    currentFileName: fileName,
+    isWaitingForHost,
+  });
 
   return (
-    <div className="flex-1 flex items-center justify-center bg-surface-container-lowest p-4 md:p-12">
-      <div className="text-center space-y-6">
-        <div className="w-20 h-20 mx-auto rounded-full bg-surface-container-high flex items-center justify-center border border-primary-container/20 text-4xl">
-          🎬
+    <div className="flex flex-1 items-center justify-center px-4 py-8 md:px-8">
+      <Panel variant="glass" padding="lg" className="w-full max-w-3xl rounded-[2rem]">
+        <div className="mb-6 flex flex-wrap gap-2">
+          <StageTag label={isHost ? 'Host file stage' : 'Viewer file stage'} />
+          {referenceFileName && <StageTag label={truncateLabel(referenceFileName)} />}
+          <StageTag label={roomStatus.replace('_', ' ')} />
         </div>
 
-        {status === 'idle' && isWaitingForHost && (
-          <>
-            <h2 className="font-black text-xl md:text-2xl tracking-tight text-on-surface">
-              Waiting for host…
+        <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-start">
+          <div>
+            <div className="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-[1.5rem] border border-primary-container/20 bg-primary-container/10 text-primary shadow-[0_0_40px_rgba(0,98,255,0.15)]">
+              <VideoIcon size={34} />
+            </div>
+
+            <h2 className="text-3xl font-black tracking-tight text-on-surface md:text-4xl">
+              {copy.title}
             </h2>
-            <p className="text-on-surface-variant max-w-xs mx-auto text-sm">
-              The host hasn't chosen a video yet. You'll be prompted to select the same file once they do.
+            <p className="mt-4 max-w-xl text-sm leading-7 text-on-surface-variant md:text-base">
+              {copy.description}
             </p>
-            <div className="w-12 h-12 mx-auto border-4 border-primary-container/30 border-t-primary-container rounded-full animate-spin" />
-          </>
-        )}
 
-        {status === 'idle' && !isWaitingForHost && (
-          <>
-            <h2 className="font-black text-xl md:text-2xl tracking-tight text-on-surface">
-              {isHost ? 'Select a video file to start' : 'Select the host\u2019s video file'}
-            </h2>
-            <p className="text-on-surface-variant max-w-xs mx-auto text-sm">
-              {isHost
-                ? 'Choose a video file. Other participants will need to select the same file.'
-                : 'The host picked a video. Choose the exact same file on your device to join.'}
-            </p>
-          </>
-        )}
+            {copy.note && (
+              <Panel variant="outline" padding="sm" className="mt-5 rounded-2xl">
+                <p className="break-words text-sm text-on-surface-variant">{copy.note}</p>
+              </Panel>
+            )}
 
-        {status === 'hashing' && (
-          <>
-            <h2 className="font-black text-xl md:text-2xl tracking-tight text-on-surface">
-              Computing file hash...
-            </h2>
-            <p className="text-on-surface-variant max-w-xs mx-auto text-sm">{fileName}</p>
-            <div className="w-12 h-12 mx-auto border-4 border-primary-container/30 border-t-primary-container rounded-full animate-spin" />
-          </>
-        )}
+            {!isWaitingForHost && (
+              <div className="mt-8">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => inputRef.current?.click()}
+                  disabled={status === 'hashing' || status === 'verifying'}
+                  leadingIcon={<VideoIcon size={16} />}
+                  className="w-full sm:w-auto"
+                >
+                  {status === 'idle' ? 'Choose Local Video' : 'Choose Another File'}
+                </Button>
+              </div>
+            )}
+          </div>
 
-        {status === 'verifying' && (
-          <>
-            <h2 className="font-black text-xl md:text-2xl tracking-tight text-on-surface">
-              Verifying file...
-            </h2>
-            <p className="text-on-surface-variant max-w-xs mx-auto text-sm">{fileName}</p>
-            <div className="w-12 h-12 mx-auto border-4 border-primary-container/30 border-t-primary-container rounded-full animate-spin" />
-          </>
-        )}
+          <div className="space-y-4">
+            <Panel variant="outline" padding="md" className="rounded-[1.75rem]">
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
+                Stage Status
+              </p>
+              <div className="mt-4 space-y-4">
+                <StatusRow
+                  label="Current phase"
+                  value={copy.phaseLabel}
+                  accent={status === 'hashing' || status === 'verifying'}
+                />
+                <StatusRow label="Reference file" value={referenceFileName || 'Not chosen yet'} />
+                <StatusRow label="Selected file" value={fileName || 'Nothing selected'} />
+              </div>
+            </Panel>
 
-        {status === 'mismatch' && (
-          <>
-            <h2 className="font-black text-xl md:text-2xl tracking-tight text-error">
-              File does not match
-            </h2>
-            <p className="text-on-surface-variant max-w-xs mx-auto text-sm">
-              {verifyResult?.reason || 'Please select the same file as the host.'}
-            </p>
-          </>
-        )}
-
-        {status === 'not_video' && (
-          <>
-            <h2 className="font-black text-xl md:text-2xl tracking-tight text-error">
-              That's not a video file
-            </h2>
-            <p className="text-on-surface-variant max-w-xs mx-auto text-sm">
-              {fileName
-                ? `"${fileName}" isn't a video. Pick a video file (mp4, mkv, webm, …).`
-                : "Pick a video file (mp4, mkv, webm, …)."}
-            </p>
-          </>
-        )}
-
-        {status === 'error' && (
-          <>
-            <h2 className="font-black text-xl md:text-2xl tracking-tight text-error">
-              Failed to read file
-            </h2>
-            <p className="text-on-surface-variant max-w-xs mx-auto text-sm">
-              Couldn't read this video. The file may be corrupted, or the codec
-              isn't supported by your browser.
-            </p>
-          </>
-        )}
-
-        {status !== 'verified' && !isWaitingForHost && (
-          <button
-            onClick={() => inputRef.current?.click()}
-            disabled={status === 'hashing' || status === 'verifying'}
-            className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-br from-primary-container to-[#0053da] text-on-primary-container font-bold uppercase text-xs tracking-widest active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-          >
-            {status === 'idle' ? 'Choose Video File' : 'Try Another File'}
-          </button>
-        )}
+            {preferences.showRoomOnboarding && (
+              <RoomOnboarding
+                isHost={isHost}
+                roomStatus={roomStatus}
+                referenceFileName={referenceFileName}
+                hasLocalFile={status === 'verified'}
+                videoReady={false}
+                readyParticipants={readyParticipants}
+                totalParticipants={totalParticipants}
+              />
+            )}
+          </div>
+        </div>
 
         <input
           ref={inputRef}
@@ -246,7 +240,143 @@ export function FileSelector({
           onChange={handleFileSelect}
           className="hidden"
         />
-      </div>
+      </Panel>
     </div>
   );
+}
+
+function getSelectorCopy({
+  status,
+  isHost,
+  roomStatus,
+  referenceFileName,
+  verifyReason,
+  currentFileName,
+  isWaitingForHost,
+}: {
+  status: FileStatus;
+  isHost: boolean;
+  roomStatus: RoomStatus;
+  referenceFileName: string | null;
+  verifyReason?: string;
+  currentFileName: string;
+  isWaitingForHost: boolean;
+}) {
+  switch (status) {
+    case 'hashing':
+      return {
+        title: 'Computing file signature',
+        description:
+          'The local file is being fingerprinted so the room can verify everyone is watching the same media.',
+        note: currentFileName,
+        phaseLabel: 'Hashing',
+      };
+    case 'verifying':
+      return {
+        title: 'Checking against the room reference',
+        description:
+          'The frontend is confirming the file signature, duration and size before the player becomes active.',
+        note: currentFileName,
+        phaseLabel: 'Verifying',
+      };
+    case 'mismatch':
+      return {
+        title: 'This file does not match the room',
+        description:
+          verifyReason || 'Pick the exact same local video as the host to join the synced playback.',
+        note: referenceFileName ? `Expected reference: ${referenceFileName}` : undefined,
+        phaseLabel: 'Mismatch',
+      };
+    case 'error':
+      return {
+        title: 'The browser could not read this file',
+        description:
+          'Try selecting the file again or switch to a more broadly supported video format.',
+        note: currentFileName || undefined,
+        phaseLabel: 'Read error',
+      };
+    case 'not_video':
+      return {
+        title: 'That file is not a video',
+        description:
+          currentFileName
+            ? `"${currentFileName}" is not recognized as a video file.`
+            : 'Choose a supported local video file to continue.',
+        note: 'Try mp4, mkv, webm or another browser-supported format.',
+        phaseLabel: 'Unsupported file',
+      };
+    case 'verified':
+      return {
+        title: 'File verified',
+        description: 'The player is opening your local video now.',
+        note: currentFileName,
+        phaseLabel: 'Verified',
+      };
+    default:
+      if (isWaitingForHost) {
+        return {
+          title: 'Waiting for the host file',
+          description:
+            'As soon as the host picks a reference file, you will be able to choose the same file on your device.',
+          note: 'No shared reference file yet.',
+          phaseLabel: 'Awaiting reference file',
+        };
+      }
+
+      if (referenceFileName) {
+        return {
+          title: isHost ? 'Load or replace the reference file' : 'Match the host file locally',
+          description: isHost
+            ? 'You already have a room reference. Choose the same file again to load it locally, or pick another one to replace the shared reference.'
+            : 'The host already picked a reference file. Select the same local video to join the synchronized playback.',
+          note: `Reference file: ${referenceFileName}`,
+          phaseLabel:
+            roomStatus === 'waiting_ready' ? 'Waiting for readiness' : 'Ready to select',
+        };
+      }
+
+      return {
+        title: isHost ? 'Choose the first room file' : 'Waiting for the host file',
+        description: isHost
+          ? 'Start the room by selecting the local video everyone will match against.'
+          : 'As soon as the host picks a reference file, you will be able to choose the same file on your device.',
+        note: roomStatus === 'waiting_file' ? 'No shared reference file yet.' : undefined,
+        phaseLabel: roomStatus === 'waiting_file' ? 'Awaiting reference file' : 'Idle',
+      };
+  }
+}
+
+function StageTag({ label }: { label: string }) {
+  return (
+    <Badge tone="neutral" className="max-w-full">
+      <span className="truncate">{label}</span>
+    </Badge>
+  );
+}
+
+function StatusRow({
+  label,
+  value,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
+  return (
+    <Panel variant="muted" padding="sm" className="rounded-2xl">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-on-surface-variant">{label}</p>
+      <p
+        className={`mt-2 break-words text-sm leading-6 ${
+          accent ? 'text-primary' : 'text-on-surface'
+        }`}
+      >
+        {value}
+      </p>
+    </Panel>
+  );
+}
+
+function truncateLabel(value: string) {
+  return value.length > 24 ? `${value.slice(0, 21)}...` : value;
 }

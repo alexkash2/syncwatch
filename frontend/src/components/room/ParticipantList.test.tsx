@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 import { ParticipantList } from './ParticipantList';
 
 const participants = [
@@ -10,35 +10,29 @@ const participants = [
 
 describe('ParticipantList', () => {
   it('marks the host', () => {
-    render(<ParticipantList participants={participants} hostId="u2" />);
-    // "Host" badge next to bob
+    render(<ParticipantList participants={participants} hostId="u2" currentUserId="u1" />);
     expect(screen.getByText('Host')).toBeInTheDocument();
   });
 
-  it('marks the current user as "(you)"', () => {
+  it('marks the current user', () => {
     render(
-      <ParticipantList
-        participants={participants}
-        hostId="u1"
-        currentUserId="u3"
-      />
+      <ParticipantList participants={participants} hostId="u1" currentUserId="u3" />
     );
-    expect(screen.getByText('(you)')).toBeInTheDocument();
+    expect(screen.getByText('You')).toBeInTheDocument();
   });
 
   it('renders host first, then alphabetical', () => {
-    render(<ParticipantList participants={participants} hostId="u3" />);
-    // Avatar divs show the first letter. They appear once per participant,
-    // in render order, so they give us a clean ordering probe.
+    render(<ParticipantList participants={participants} hostId="u3" currentUserId="u1" />);
     const avatars = Array.from(document.querySelectorAll('div'))
-      .filter((d) => /^[A-Z]$/.test(d.textContent || ''))
-      .map((d) => d.textContent);
-    expect(avatars).toEqual(['C', 'A', 'B']); // carol (host), then alphabetical
+      .filter((div) => /^[A-Z]$/.test(div.textContent || ''))
+      .map((div) => div.textContent);
+
+    expect(avatars).toEqual(['C', 'A', 'B']);
   });
 
-  it('shows the ready/not-ready legend', () => {
-    render(<ParticipantList participants={participants} hostId="u1" />);
-    expect(screen.getByText(/Ready — video loaded/i)).toBeInTheDocument();
-    expect(screen.getByText(/Not ready/i)).toBeInTheDocument();
+  it('shows readiness states', () => {
+    render(<ParticipantList participants={participants} hostId="u1" currentUserId="u2" />);
+    expect(screen.getAllByText('Ready')).toHaveLength(2);
+    expect(screen.getByText('Waiting')).toBeInTheDocument();
   });
 });

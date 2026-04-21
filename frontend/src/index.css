@@ -19,11 +19,238 @@
 
 body {
   margin: 0;
-  background-color: var(--color-surface);
+  background:
+    radial-gradient(circle at top left, rgba(0, 98, 255, 0.16), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(180, 197, 255, 0.1), transparent 28%),
+    #131313;
   color: var(--color-on-surface);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[role="tab"]:focus-visible {
+  outline: 2px solid rgba(180, 197, 255, 0.92);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(0, 98, 255, 0.18);
+}
+
+::selection {
+  background: rgba(180, 197, 255, 0.32);
+  color: #fff;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: -0.03em;
 }
 
 #root {
   min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+html[data-motion="reduced"] {
+  scroll-behavior: auto;
+}
+
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
+}
+
+@keyframes surface-sheen {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+.surface-skeleton {
+  position: relative;
+  overflow: hidden;
+}
+
+.surface-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 45%,
+    transparent 100%
+  );
+  animation: surface-sheen 1.8s ease-in-out infinite;
+}
+
+@keyframes ui-toast-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes ui-overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ui-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ui-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ui-dot-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+
+  50% {
+    transform: scale(1.18);
+    filter: brightness(1.25);
+  }
+}
+
+.ui-toast-enter {
+  animation: ui-toast-in 0.22s ease-out;
+}
+
+.ui-overlay-enter {
+  animation: ui-overlay-in 0.18s ease-out;
+}
+
+.ui-dialog-enter {
+  animation: ui-dialog-in 0.22s ease-out;
+}
+
+.ui-fade-up {
+  animation: ui-fade-up 0.32s ease-out both;
+}
+
+.ui-dot-pulse {
+  animation: ui-dot-pulse 2.2s ease-in-out infinite;
+}
+
+.media-slider {
+  appearance: none;
+  background: transparent;
+}
+
+.media-slider::-webkit-slider-runnable-track {
+  height: 0.35rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 98, 255, 0.92) 0%,
+    rgba(180, 197, 255, 0.7) 100%
+  );
+}
+
+.media-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: -0.3rem;
+  border: 2px solid rgba(243, 243, 255, 0.9);
+  border-radius: 999px;
+  background: #0062ff;
+  box-shadow: 0 0 0 5px rgba(0, 98, 255, 0.18);
+}
+
+.media-slider::-moz-range-track {
+  height: 0.35rem;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 98, 255, 0.92) 0%,
+    rgba(180, 197, 255, 0.7) 100%
+  );
+}
+
+.media-slider::-moz-range-thumb {
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 2px solid rgba(243, 243, 255, 0.9);
+  border-radius: 999px;
+  background: #0062ff;
+  box-shadow: 0 0 0 5px rgba(0, 98, 255, 0.18);
+}
+
+.media-slider.media-slider-thin::-webkit-slider-runnable-track {
+  height: 0.2rem;
+}
+
+.media-slider.media-slider-thin::-moz-range-track {
+  height: 0.2rem;
 }

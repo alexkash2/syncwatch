@@ -1,117 +1,128 @@
-import { useState, type FormEvent } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router';
+import { AuthShell } from '../components/auth/AuthShell';
+import { Button } from '../components/ui/Button';
+import { Field } from '../components/ui/Field';
+import { Input } from '../components/ui/Input';
+import { Panel } from '../components/ui/Panel';
 import { useAuth } from '../hooks/useAuth';
+import { useUi } from '../hooks/useUi';
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { pushToast } = useUi();
   const flashMessage = (location.state as { flash?: string } | null)?.flash;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!flashMessage) {
+      return;
+    }
+
+    pushToast({
+      tone: 'success',
+      title: 'Account created',
+      description: flashMessage,
+      durationMs: 4200,
+    });
+    navigate(location.pathname, {
+      replace: true,
+      state: null,
+    });
+  }, [flashMessage, location.pathname, navigate, pushToast]);
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
     setError('');
     setLoading(true);
+
     try {
       await login({ email, password });
       navigate('/');
-    } catch {
-      setError('Invalid email or password');
+    } catch (err: unknown) {
+      setError(
+        (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ||
+          'Invalid email or password'
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-[#0e0e0e] relative">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/4 -right-1/4 w-[800px] h-[800px] rounded-full bg-primary-container/5 blur-[120px]" />
+    <AuthShell
+      eyebrow="Access Your Room"
+      title="Pick up the watch party where you left it."
+      description="Sign in to rejoin your rooms, sync with the host and keep the playback state consistent across everyone in the session."
+      footerPrompt="Need an account?"
+      footerLabel="Create one"
+      footerHref="/register"
+      illustrationVariant="welcome"
+    >
+      <div className="mb-8">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.28em] text-primary">
+          Welcome Back
+        </p>
+        <h2 className="text-3xl font-black tracking-tight text-on-surface">Log in</h2>
+        <p className="mt-3 text-sm text-on-surface-variant">
+          Use the same account you created your rooms with.
+        </p>
       </div>
 
-      <main className="relative z-10 w-full max-w-[440px]">
-        <div className="mb-12 text-center">
-          <h1 className="font-black text-4xl tracking-tighter text-primary mb-2 uppercase italic">
-            SyncWatch
-          </h1>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-on-surface-variant">
-            Synchronized Video Playback
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <Field label="Email Address">
+          <Input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            required
+          />
+        </Field>
+
+        <Field label="Password">
+          <Input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Enter your password"
+            autoComplete="current-password"
+            required
+          />
+        </Field>
+
+        {error && (
+          <Panel
+            variant="outline"
+            padding="sm"
+            className="rounded-2xl border-error/30 bg-error-container/30 text-error"
+            aria-live="polite"
+          >
+            <p className="text-sm">{error}</p>
+          </Panel>
+        )}
+
+        <Button type="submit" variant="primary" size="lg" fullWidth disabled={loading}>
+          {loading ? 'Logging in...' : 'Log in'}
+        </Button>
+
+        <Panel variant="muted" padding="sm" className="rounded-[1.6rem]">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
+            Local-first playback
           </p>
-        </div>
-
-        <div className="bg-surface-container-high/60 backdrop-blur-xl p-10 border border-outline-variant/20 shadow-[0px_24px_48px_rgba(0,0,0,0.4)]">
-          <div className="mb-10">
-            <h2 className="font-bold text-2xl tracking-tight text-on-surface mb-1">
-              Welcome back
-            </h2>
-            <p className="text-sm text-on-surface-variant">
-              Enter your credentials to continue.
-            </p>
-          </div>
-
-          {flashMessage && (
-            <div className="mb-6 p-3 bg-primary-container/20 border border-primary-container/40 text-primary text-sm">
-              {flashMessage}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <div className="space-y-2">
-              <label className="text-[10px] uppercase tracking-[0.1em] text-on-surface-variant">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-surface-container-lowest border-0 border-b border-outline-variant/20 text-on-surface text-sm py-3 px-0 focus:outline-none focus:border-primary-container transition-colors placeholder:text-on-surface-variant/30"
-                placeholder="Email"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] uppercase tracking-[0.1em] text-on-surface-variant">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-surface-container-lowest border-0 border-b border-outline-variant/20 text-on-surface text-sm py-3 px-0 focus:outline-none focus:border-primary-container transition-colors placeholder:text-on-surface-variant/30"
-                placeholder="Password"
-                required
-              />
-            </div>
-
-            {error && (
-              <p className="text-error text-sm">{error}</p>
-            )}
-
-            <div className="pt-4">
-              <button
-                type="submit"
-                disabled={loading}
-                className="bg-gradient-to-br from-primary-container to-[#0053da] w-full py-4 text-on-primary-container font-bold text-xs uppercase tracking-[0.15em] hover:shadow-[0_0_20px_rgba(0,98,255,0.4)] active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
-              >
-                {loading ? 'Logging in...' : 'Log in'}
-              </button>
-            </div>
-          </form>
-        </div>
-
-        <div className="mt-8 text-center">
-          <p className="text-sm text-on-surface-variant">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-primary font-bold hover:text-white transition-colors">
-              Register
-            </Link>
+          <p className="mt-2 text-xs leading-6 text-on-surface-variant">
+            The session opens on this device only, and the room state syncs from there.
           </p>
-        </div>
-      </main>
-    </div>
+        </Panel>
+      </form>
+    </AuthShell>
   );
 }
