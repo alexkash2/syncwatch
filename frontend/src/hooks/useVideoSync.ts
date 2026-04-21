@@ -11,14 +11,12 @@ interface UseVideoSyncOptions {
   videoRef: RefObject<HTMLVideoElement | null>;
   send: (type: string, payload?: Record<string, unknown>) => boolean;
   fileVersion: number;
-  isHost: boolean;
 }
 
 export function useVideoSync({
   videoRef,
   send,
   fileVersion,
-  isHost,
 }: UseVideoSyncOptions) {
   const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
@@ -120,23 +118,6 @@ export function useVideoSync({
     },
     [fileVersion, send, sendSyncReport, videoRef]
   );
-
-  useEffect(() => {
-    if (isHost) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      const video = videoRef.current;
-      if (!video || video.readyState < 2) {
-        return;
-      }
-
-      sendSyncReport(video);
-    }, 3000);
-
-    return () => window.clearInterval(intervalId);
-  }, [fileVersion, isHost, sendSyncReport, videoRef]);
 
   useEffect(() => {
     return () => clearTimeout(nudgeTimerRef.current);

@@ -47,17 +47,28 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
         ? state.messages
         : [...state.messages, message],
     })),
-  setFileUrl: (fileUrl) => set({ fileUrl }),
+  setFileUrl: (fileUrl) =>
+    set((state) => {
+      if (state.fileUrl && state.fileUrl !== fileUrl) {
+        URL.revokeObjectURL(state.fileUrl);
+      }
+      return { fileUrl };
+    }),
   setFileVersion: (fileVersion) => set({ fileVersion }),
   setHostDisconnected: (hostDisconnected) => set({ hostDisconnected }),
   setGraceCountdown: (graceCountdown) => set({ graceCountdown }),
   resetRoom: () =>
-    set({
-      participants: [],
-      messages: [],
-      fileUrl: null,
-      fileVersion: 0,
-      hostDisconnected: false,
-      graceCountdown: 0,
+    set((state) => {
+      if (state.fileUrl) {
+        URL.revokeObjectURL(state.fileUrl);
+      }
+      return {
+        participants: [],
+        messages: [],
+        fileUrl: null,
+        fileVersion: 0,
+        hostDisconnected: false,
+        graceCountdown: 0,
+      };
     }),
 }));

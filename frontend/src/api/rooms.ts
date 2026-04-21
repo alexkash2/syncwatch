@@ -7,13 +7,6 @@ export interface ChatHistoryResponse {
   next_cursor: string | null;
 }
 
-export interface FileInfoPayload {
-  file_hash: string;
-  file_size: number;
-  file_duration_ms: number;
-  file_name: string;
-}
-
 export async function createRoom(name: string) {
   const response = await apiClient.post<Room>('/rooms/', { name });
   return response.data;
@@ -47,11 +40,6 @@ export async function leaveRoom(roomId: string) {
 
 export async function deleteRoom(roomId: string) {
   const response = await apiClient.delete<{ ok: boolean }>(`/rooms/${roomId}`);
-  return response.data;
-}
-
-export async function updateFileInfo(roomId: string, payload: FileInfoPayload) {
-  const response = await apiClient.put<Room>(`/rooms/${roomId}/file-info`, payload);
   return response.data;
 }
 

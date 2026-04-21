@@ -168,7 +168,6 @@ export function RoomPage() {
     videoRef,
     send,
     fileVersion,
-    isHost: room?.host_id === user?.id,
   });
 
   useEffect(() => {

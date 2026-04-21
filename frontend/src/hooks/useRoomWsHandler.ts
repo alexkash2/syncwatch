@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import type { NavigateFunction } from 'react-router';
 import { getHomeArrivalNotice } from '../types/navigation';
+import { useUi } from './useUi';
 import type {
   ChatMessage,
   FileVerifyResult,
@@ -46,6 +47,7 @@ export function useRoomWsHandler({
   onSyncMessage,
   videoRef,
 }: UseRoomWsHandlerOptions) {
+  const { pushToast } = useUi();
   const graceTimerRef = useRef<number | null>(null);
 
   const clearGraceTimer = useCallback(() => {
@@ -228,6 +230,13 @@ export function useRoomWsHandler({
             });
           } else if (msg.code === 'room_gone') {
             navigate('/', { state: { arrivalNotice: getHomeArrivalNotice('room_not_found') } });
+          } else if (msg.code === 'rate_limited') {
+            pushToast({
+              tone: 'warning',
+              title: 'Slow down',
+              description: msg.message || 'You are sending messages too quickly.',
+              durationMs: 3200,
+            });
           }
           break;
 
@@ -241,6 +250,7 @@ export function useRoomWsHandler({
       clearPlaybackState,
       navigate,
       onSyncMessage,
+      pushToast,
       setFileUrl,
       setFileVersion,
       fileVersionRef,
