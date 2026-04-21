@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { leaveRoom } from '../api/rooms';
+import { getChatHistory, leaveRoom } from '../api/rooms';
 import { VideoArea } from '../components/room/VideoArea';
 import { RoomHeader } from '../components/room/RoomHeader';
 import { RoomSidebar } from '../components/room/RoomSidebar';
@@ -61,6 +61,12 @@ export function RoomPage() {
   const graceCountdown = useRoomStore((state) => state.graceCountdown);
   const setGraceCountdown = useRoomStore((state) => state.setGraceCountdown);
 
+  const chatCursor = useRoomStore((state) => state.chatCursor);
+  const setChatCursor = useRoomStore((state) => state.setChatCursor);
+
+  const chatLoadError = useRoomStore((state) => state.chatLoadError);
+  const setChatLoadError = useRoomStore((state) => state.setChatLoadError);
+
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'participants'>('chat');
@@ -96,6 +102,8 @@ export function RoomPage() {
     setRoom,
     setParticipants,
     setMessages,
+    setChatCursor,
+    setChatLoadError,
     setLoading,
     navigate,
   });
@@ -267,6 +275,42 @@ export function RoomPage() {
   );
 
   const handleSendChat = useCallback((content: string) => send('chat_send', { content }), [send]);
+
+  const handleLoadMoreChat = useCallback(async (): Promise<boolean> => {
+    if (!roomId || !chatCursor) {
+      return false;
+    }
+
+    try {
+      const history = await getChatHistory(roomId, chatCursor);
+      setMessages((current) => {
+        const existing = new Set(current.map((message) => message.id));
+        const older = history.messages.filter((message) => !existing.has(message.id));
+        return [...older, ...current];
+      });
+      setChatCursor(history.next_cursor ?? null);
+      setChatLoadError(false);
+      return true;
+    } catch {
+      setChatLoadError(true);
+      return false;
+    }
+  }, [chatCursor, roomId, setChatCursor, setChatLoadError, setMessages]);
+
+  const handleRetryChatLoad = useCallback(async () => {
+    if (!roomId) {
+      return;
+    }
+
+    try {
+      const history = await getChatHistory(roomId);
+      setMessages(history.messages);
+      setChatCursor(history.next_cursor ?? null);
+      setChatLoadError(false);
+    } catch {
+      setChatLoadError(true);
+    }
+  }, [roomId, setChatCursor, setChatLoadError, setMessages]);
 
   const handleLeave = useCallback(async () => {
     if (!roomId) {
@@ -522,6 +566,10 @@ export function RoomPage() {
               currentUserId={user?.id || ''}
               hostId={room.host_id}
               onSendChat={handleSendChat}
+              onLoadMoreChat={handleLoadMoreChat}
+              hasMoreChat={chatCursor !== null}
+              chatLoadError={chatLoadError}
+              onRetryChatLoad={handleRetryChatLoad}
             />
           </div>
         </main>

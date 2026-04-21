@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { WsParticipant } from '../../types/ws';
+import type { ParticipantRuntimeStatus, WsParticipant } from '../../types/ws';
 import { Badge } from '../ui/Badge';
 import { UsersIcon } from '../ui/icons';
 import { StatePanel } from '../ui/StatePanel';
@@ -96,6 +96,14 @@ export function ParticipantList({
                       {participant.is_ready ? 'Ready' : 'Waiting'}
                     </Badge>
                   </div>
+
+                  {participant.status && participant.status !== 'playing' && participant.status !== 'paused' && (
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      <Badge tone={getRuntimeStatusTone(participant.status)}>
+                        {getRuntimeStatusLabel(participant.status, participant.status_detail)}
+                      </Badge>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -104,4 +112,30 @@ export function ParticipantList({
       </div>
     </div>
   );
+}
+
+function getRuntimeStatusLabel(status: ParticipantRuntimeStatus, detail?: string) {
+  switch (status) {
+    case 'buffering':
+      return 'Buffering';
+    case 'error':
+      return detail ? `Error: ${detail}` : 'Playback error';
+    case 'waiting_interaction':
+      return 'Needs tap to play';
+    default:
+      return status;
+  }
+}
+
+function getRuntimeStatusTone(status: ParticipantRuntimeStatus) {
+  switch (status) {
+    case 'buffering':
+      return 'warning' as const;
+    case 'error':
+      return 'danger' as const;
+    case 'waiting_interaction':
+      return 'warning' as const;
+    default:
+      return 'neutral' as const;
+  }
 }

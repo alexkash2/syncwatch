@@ -8,11 +8,20 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export type ParticipantRuntimeStatus =
+  | 'playing'
+  | 'paused'
+  | 'buffering'
+  | 'error'
+  | 'waiting_interaction';
+
 export interface WsParticipant {
   user_id: string;
   username: string;
   is_ready: boolean;
   joined_at?: string;
+  status?: ParticipantRuntimeStatus;
+  status_detail?: string;
 }
 
 export interface PlaybackState {

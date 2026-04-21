@@ -22,6 +22,10 @@ interface RoomSidebarProps {
   currentUserId: string;
   hostId: string;
   onSendChat: (content: string) => boolean;
+  onLoadMoreChat?: () => Promise<boolean> | void;
+  hasMoreChat?: boolean;
+  chatLoadError?: boolean;
+  onRetryChatLoad?: () => void | Promise<void>;
 }
 
 export function RoomSidebar({
@@ -37,6 +41,10 @@ export function RoomSidebar({
   currentUserId,
   hostId,
   onSendChat,
+  onLoadMoreChat,
+  hasMoreChat,
+  chatLoadError,
+  onRetryChatLoad,
 }: RoomSidebarProps) {
   const readyCount = participants.filter((participant) => participant.is_ready).length;
   const connectionMeta = getConnectionMeta(connectionState);
@@ -218,7 +226,15 @@ export function RoomSidebar({
           aria-labelledby={activeTab === 'chat' ? 'room-tab-chat' : 'room-tab-participants'}
         >
           {activeTab === 'chat' ? (
-            <ChatPanel messages={messages} onSend={onSendChat} currentUserId={currentUserId} />
+            <ChatPanel
+              messages={messages}
+              onSend={onSendChat}
+              currentUserId={currentUserId}
+              onLoadMore={onLoadMoreChat}
+              hasMore={hasMoreChat}
+              loadError={chatLoadError}
+              onRetryLoad={onRetryChatLoad}
+            />
           ) : (
             <ParticipantList
               participants={participants}

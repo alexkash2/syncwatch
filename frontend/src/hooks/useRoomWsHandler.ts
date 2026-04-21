@@ -165,6 +165,20 @@ export function useRoomWsHandler({
           );
           break;
 
+        case 'participant_status':
+          setParticipants((currentParticipants) =>
+            currentParticipants.map((participant) =>
+              participant.user_id === msg.user_id
+                ? {
+                    ...participant,
+                    status: msg.status as WsParticipant['status'],
+                    status_detail: msg.detail,
+                  }
+                : participant
+            )
+          );
+          break;
+
         case 'host_disconnected': {
           clearGraceTimer();
           setHostDisconnected(true);

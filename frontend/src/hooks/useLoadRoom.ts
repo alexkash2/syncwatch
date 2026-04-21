@@ -10,6 +10,8 @@ interface UseLoadRoomOptions {
   setRoom: (room: RoomDetail) => void;
   setParticipants: (participants: WsParticipant[]) => void;
   setMessages: (messages: ChatMessage[]) => void;
+  setChatCursor: (cursor: string | null) => void;
+  setChatLoadError: (value: boolean) => void;
   setLoading: (value: boolean) => void;
   navigate: NavigateFunction;
 }
@@ -19,6 +21,8 @@ export function useLoadRoom({
   setRoom,
   setParticipants,
   setMessages,
+  setChatCursor,
+  setChatLoadError,
   setLoading,
   navigate,
 }: UseLoadRoomOptions) {
@@ -39,11 +43,6 @@ export function useLoadRoom({
 
         setRoom(room);
         setParticipants(room.participants || []);
-
-        const history = await getChatHistory(roomId);
-        if (!cancelled) {
-          setMessages(history.messages);
-        }
       } catch (error) {
         console.error('Failed to load room:', error);
         if (!cancelled) {
@@ -58,9 +57,26 @@ export function useLoadRoom({
 
           navigate('/', { state: { arrivalNotice } });
         }
+        return;
       } finally {
         if (!cancelled) {
           setLoading(false);
+        }
+      }
+
+      // Chat history is optional for opening the room — a failure should show
+      // a retry affordance instead of kicking the user back to the dashboard.
+      try {
+        const history = await getChatHistory(roomId);
+        if (!cancelled) {
+          setMessages(history.messages);
+          setChatCursor(history.next_cursor ?? null);
+          setChatLoadError(false);
+        }
+      } catch (error) {
+        console.error('Failed to load chat history:', error);
+        if (!cancelled) {
+          setChatLoadError(true);
         }
       }
     }
@@ -70,5 +86,14 @@ export function useLoadRoom({
     return () => {
       cancelled = true;
     };
-  }, [navigate, roomId, setLoading, setMessages, setParticipants, setRoom]);
+  }, [
+    navigate,
+    roomId,
+    setChatCursor,
+    setChatLoadError,
+    setLoading,
+    setMessages,
+    setParticipants,
+    setRoom,
+  ]);
 }

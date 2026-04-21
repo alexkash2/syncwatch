@@ -10,6 +10,8 @@ interface RoomStoreState {
   fileVersion: number;
   hostDisconnected: boolean;
   graceCountdown: number;
+  chatCursor: string | null;
+  chatLoadError: boolean;
   setParticipants: (value: StateUpdater<WsParticipant[]>) => void;
   setMessages: (value: StateUpdater<ChatMessage[]>) => void;
   addMessage: (message: ChatMessage) => void;
@@ -17,6 +19,8 @@ interface RoomStoreState {
   setFileVersion: (version: number) => void;
   setHostDisconnected: (value: boolean) => void;
   setGraceCountdown: (value: number) => void;
+  setChatCursor: (cursor: string | null) => void;
+  setChatLoadError: (value: boolean) => void;
   resetRoom: () => void;
 }
 
@@ -33,6 +37,8 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
   fileVersion: 0,
   hostDisconnected: false,
   graceCountdown: 0,
+  chatCursor: null,
+  chatLoadError: false,
   setParticipants: (value) =>
     set((state) => ({
       participants: resolveState(state.participants, value),
@@ -57,6 +63,8 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
   setFileVersion: (fileVersion) => set({ fileVersion }),
   setHostDisconnected: (hostDisconnected) => set({ hostDisconnected }),
   setGraceCountdown: (graceCountdown) => set({ graceCountdown }),
+  setChatCursor: (chatCursor) => set({ chatCursor }),
+  setChatLoadError: (chatLoadError) => set({ chatLoadError }),
   resetRoom: () =>
     set((state) => {
       if (state.fileUrl) {
@@ -69,6 +77,8 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
         fileVersion: 0,
         hostDisconnected: false,
         graceCountdown: 0,
+        chatCursor: null,
+        chatLoadError: false,
       };
     }),
 }));
