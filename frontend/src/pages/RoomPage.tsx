@@ -127,7 +127,6 @@ export function RoomPage() {
     setReferenceFile,
     clearPlaybackState,
     onSyncMessage: (message) => syncMessageRef.current(message),
-    videoRef,
   });
 
   const { send, isConnected, isReconnecting } = useWebSocket({
