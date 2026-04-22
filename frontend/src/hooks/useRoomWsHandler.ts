@@ -28,7 +28,6 @@ interface UseRoomWsHandlerOptions {
   setReferenceFile: (value: ReferenceFileState) => void;
   clearPlaybackState: () => void;
   onSyncMessage: (message: SyncRelatedMessage) => void;
-  videoRef: React.RefObject<HTMLVideoElement | null>;
 }
 
 export function useRoomWsHandler({
@@ -45,7 +44,6 @@ export function useRoomWsHandler({
   setReferenceFile,
   clearPlaybackState,
   onSyncMessage,
-  videoRef,
 }: UseRoomWsHandlerOptions) {
   const { pushToast } = useUi();
   const graceTimerRef = useRef<number | null>(null);
@@ -81,16 +79,16 @@ export function useRoomWsHandler({
             clearPlaybackState();
           }
 
-          const video = videoRef.current;
-          if (video && video.readyState > 0) {
-            video.currentTime = msg.playback_state.current_time_ms / 1000;
-
-            if (msg.playback_state.is_playing) {
-              video.play().catch(() => {});
-            } else {
-              video.pause();
-            }
-          }
+          // Route the rehydrated playback snapshot through the sync handler so
+          // useVideoSync updates `isRoomPlayingRef` and surfaces the autoplay
+          // overlay if the browser refuses `play()`. A direct video.play() here
+          // would silently fail on reconnect into a playing room and leave the
+          // viewer with a frozen player and no overlay.
+          onSyncMessage({
+            type: 'sync_state',
+            is_playing: msg.playback_state.is_playing,
+            current_time_ms: msg.playback_state.current_time_ms,
+          });
 
           break;
         }
@@ -274,7 +272,6 @@ export function useRoomWsHandler({
       setReferenceFile,
       setRoomStatus,
       setVerifyResult,
-      videoRef,
     ]
   );
 }
