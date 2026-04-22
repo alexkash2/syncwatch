@@ -26,9 +26,23 @@ function getRefreshToken() {
   return localStorage.getItem('refresh_token');
 }
 
+export const AUTH_LOGOUT_EVENT = 'syncwatch:auth-logout';
+
 export function clearAuthStorage() {
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
+}
+
+/**
+ * Called when the interceptor determines the session is dead (refresh failed
+ * or refresh token missing). AuthProvider listens for this so it can flush
+ * `user` and let ProtectedRoute bounce the user to /login.
+ */
+function signalAuthLogout() {
+  clearAuthStorage();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AUTH_LOGOUT_EVENT));
+  }
 }
 
 export function storeAuthTokens(tokens: TokenResponse) {
@@ -56,7 +70,7 @@ async function refreshAccessToken() {
   const refreshToken = getRefreshToken();
 
   if (!refreshToken) {
-    clearAuthStorage();
+    signalAuthLogout();
     return null;
   }
 
@@ -68,7 +82,7 @@ async function refreshAccessToken() {
     storeAuthTokens(response.data);
     return response.data.access_token;
   } catch {
-    clearAuthStorage();
+    signalAuthLogout();
     return null;
   }
 }
