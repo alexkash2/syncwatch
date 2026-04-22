@@ -20,6 +20,9 @@ export function useVideoSync({
 }: UseVideoSyncOptions) {
   const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  // Track whatever the room currently thinks is_playing so `resumePlayback`
+  // can refuse to kick off local playback while the shared timeline is paused.
+  const isRoomPlayingRef = useRef(false);
 
   const sendSyncReport = useCallback(
     (video: HTMLVideoElement) => {
@@ -52,6 +55,15 @@ export function useVideoSync({
       return;
     }
 
+    // If the shared room is currently paused, do NOT start local playback on
+    // user tap — that would desync this viewer against the host. Just dismiss
+    // the overlay; the next sync_state with is_playing=true will retry play(),
+    // and by then the browser already has the user-gesture it wanted.
+    if (!isRoomPlayingRef.current) {
+      setAutoplayBlocked(false);
+      return;
+    }
+
     video
       .play()
       .then(() => setAutoplayBlocked(false))
@@ -73,6 +85,8 @@ export function useVideoSync({
 
       switch (msg.type) {
         case 'sync_state': {
+          isRoomPlayingRef.current = msg.is_playing;
+
           const targetSeconds = msg.current_time_ms / 1000;
           const driftSeconds = Math.abs(video.currentTime - targetSeconds);
 
@@ -80,17 +94,24 @@ export function useVideoSync({
             video.currentTime = targetSeconds;
           }
 
-          if (msg.is_playing && video.paused) {
-            video
-              .play()
-              .then(() => setAutoplayBlocked(false))
-              .catch(() => {
-                setAutoplayBlocked(true);
-                send('playback_error', { error_code: 'autoplay_blocked' });
-              });
-          } else if (!msg.is_playing && !video.paused) {
-            video.pause();
+          if (msg.is_playing) {
+            if (video.paused) {
+              video
+                .play()
+                .then(() => setAutoplayBlocked(false))
+                .catch(() => {
+                  setAutoplayBlocked(true);
+                  send('playback_error', { error_code: 'autoplay_blocked' });
+                });
+            }
+          } else {
+            // Room paused. Always clear the autoplay overlay even if the local
+            // video was never started — otherwise the viewer stays prompted to
+            // "resume" into a paused room, and tapping desynced the timeline.
             setAutoplayBlocked(false);
+            if (!video.paused) {
+              video.pause();
+            }
           }
           break;
         }

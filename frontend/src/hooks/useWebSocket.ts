@@ -101,6 +101,12 @@ export function useWebSocket({
           );
         }
 
+        // Reset seq dedup on every fresh socket. The backend's per-room
+        // counter resets when the room drains or the process restarts, so a
+        // new session can hand us a smaller seq than the previous session's
+        // last value — without this, the initial room_state on the new socket
+        // would be silently dropped and the client would never rehydrate.
+        lastSeqRef.current = null;
         hasConnectedRef.current = true;
       };
 

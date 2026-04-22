@@ -1,6 +1,6 @@
 import { createContext, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { login as apiLogin, getMe } from '../api/auth';
-import { clearAuthStorage, storeAuthTokens } from '../api/client';
+import { AUTH_LOGOUT_EVENT, clearAuthStorage, storeAuthTokens } from '../api/client';
 import type { LoginRequest, User } from '../types/auth';
 
 interface AuthState {
@@ -36,6 +36,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearAuthStorage();
       })
       .finally(() => setIsLoading(false));
+  }, []);
+
+  // When the axios interceptor gives up on refreshing tokens, it dispatches
+  // `syncwatch:auth-logout`. Without this listener the user state would stay
+  // populated with a dead session, and ProtectedRoute would keep rendering
+  // pages that can't reach the API.
+  useEffect(() => {
+    const handleLogout = () => setUser(null);
+    window.addEventListener(AUTH_LOGOUT_EVENT, handleLogout);
+    return () => window.removeEventListener(AUTH_LOGOUT_EVENT, handleLogout);
   }, []);
 
   const login = useCallback(async (data: LoginRequest) => {
