@@ -19,6 +19,10 @@ class RoomState:
     file_version: int = 0
     # Saved status before CLOSING (for restore on host reconnect)
     _pre_closing_status: str = ""
+    # user_ids whose file was verified against the CURRENT file_version.
+    # Cleared on every file_version bump; gates `ready` messages so a client
+    # can't just send {"type":"ready"} without actually proving file identity.
+    verified_users: set = field(default_factory=set)
 
 
 class ConnectionManager:
@@ -148,8 +152,10 @@ class ConnectionManager:
 
         async def _loop():
             try:
+                tick = 0
                 while True:
                     await asyncio.sleep(3)
+                    tick += 1
                     state = self.room_states.get(room_id)
                     if state and state.is_playing:
                         from app.ws.sync import get_current_time_ms
@@ -158,6 +164,10 @@ class ConnectionManager:
                             "current_time_ms": get_current_time_ms(state),
                             "is_playing": True,
                         })
+                    elif tick % 10 == 0:
+                        # Idle keepalive every 30s so reverse proxies don't drop
+                        # paused WS connections on their read timeout.
+                        await self.broadcast(room_id, {"type": "ping"})
             except asyncio.CancelledError:
                 pass
 
@@ -168,15 +178,35 @@ class ConnectionManager:
         if task:
             task.cancel()
 
-    async def close_room(self, room_id: str, reason: str):
+    async def close_room(
+        self, room_id: str, reason: str, exclude_user: str | None = None
+    ):
+        """Close a room and broadcast room_closed to all members.
+
+        `exclude_user` skips one user in the broadcast — used when the host
+        initiated the close themselves (they don't need a flash telling them
+        "the host left"; they're mid-navigation).
+        """
         self._stop_heartbeat(room_id)
-        # Cancel all grace timers for this room
+        # Cancel all grace timers for this room. If close_room is itself
+        # invoked from inside a grace-timer callback, skip that task to
+        # avoid self-cancelling the current coroutine mid-broadcast.
+        try:
+            current = asyncio.current_task()
+        except RuntimeError:
+            current = None
         keys_to_cancel = [k for k in self._grace_timers if k[0] == room_id]
         for k in keys_to_cancel:
-            self._grace_timers.pop(k).cancel()
+            task = self._grace_timers.pop(k)
+            if task is not current:
+                task.cancel()
             self.disconnected_users.pop(k, None)
 
-        await self.broadcast(room_id, {"type": "room_closed", "reason": reason})
+        await self.broadcast(
+            room_id,
+            {"type": "room_closed", "reason": reason},
+            exclude_user=exclude_user,
+        )
         connections = self.rooms.pop(room_id, {})
         for uid, (ws, _cid) in connections.items():
             try:

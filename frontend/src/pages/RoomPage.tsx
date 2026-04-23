@@ -1,448 +1,578 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router';
-import { getChatHistory, getRoom, leaveRoom } from '../api/rooms';
+import { useNavigate, useParams } from 'react-router';
+import { getChatHistory, leaveRoom } from '../api/rooms';
+import { VideoArea } from '../components/room/VideoArea';
+import { RoomHeader } from '../components/room/RoomHeader';
+import { RoomSidebar } from '../components/room/RoomSidebar';
+import { Button } from '../components/ui/Button';
+import { BrandMarkIcon } from '../components/ui/icons';
+import { StatePanel } from '../components/ui/StatePanel';
 import { useAuth } from '../hooks/useAuth';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { usePreferences } from '../hooks/usePreferences';
+import { useUi } from '../hooks/useUi';
+import { useLoadRoom } from '../hooks/useLoadRoom';
+import { useRoomWsHandler } from '../hooks/useRoomWsHandler';
 import { useVideoSync } from '../hooks/useVideoSync';
-import { ChatPanel } from '../components/room/ChatPanel';
-import { ParticipantList } from '../components/room/ParticipantList';
-import { FileSelector } from '../components/room/FileSelector';
-import { VideoPlayer } from '../components/room/VideoPlayer';
-import { PlaybackControls } from '../components/room/PlaybackControls';
+import { useWebSocket } from '../hooks/useWebSocket';
+import { useRoomStore } from '../store/roomStore';
+import { getHomeArrivalNotice } from '../types/navigation';
 import type { RoomDetail } from '../types/room';
-import type { ChatMessage, WsMessage, WsParticipant } from '../types/ws';
+import type {
+  FileVerifyResult,
+  ReferenceFileState,
+  RoomStatus,
+  SyncRelatedMessage,
+} from '../types/ws';
+
+const EMPTY_REFERENCE_FILE: ReferenceFileState = {
+  fileName: null,
+  fileVersion: 0,
+};
+
+interface SessionNotice {
+  tone: 'warning' | 'success';
+  title: string;
+  description: string;
+}
 
 export function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { confirm, pushToast } = useUi();
+  const { preferences } = usePreferences();
+
+  const participants = useRoomStore((state) => state.participants);
+  const setParticipants = useRoomStore((state) => state.setParticipants);
+
+  const messages = useRoomStore((state) => state.messages);
+  const setMessages = useRoomStore((state) => state.setMessages);
+  const addMessage = useRoomStore((state) => state.addMessage);
+
+  const fileUrl = useRoomStore((state) => state.fileUrl);
+  const setFileUrl = useRoomStore((state) => state.setFileUrl);
+
+  const fileVersion = useRoomStore((state) => state.fileVersion);
+  const setFileVersion = useRoomStore((state) => state.setFileVersion);
+
+  const hostDisconnected = useRoomStore((state) => state.hostDisconnected);
+  const setHostDisconnected = useRoomStore((state) => state.setHostDisconnected);
+
+  const graceCountdown = useRoomStore((state) => state.graceCountdown);
+  const setGraceCountdown = useRoomStore((state) => state.setGraceCountdown);
+
+  const chatCursor = useRoomStore((state) => state.chatCursor);
+  const setChatCursor = useRoomStore((state) => state.setChatCursor);
+
+  const chatLoadError = useRoomStore((state) => state.chatLoadError);
+  const setChatLoadError = useRoomStore((state) => state.setChatLoadError);
+
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'participants'>('chat');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [participants, setParticipants] = useState<WsParticipant[]>([]);
-  const [fileUrl, setFileUrl] = useState<string | null>(null);
-  const [verifyResult, setVerifyResult] = useState<{ match: boolean; reason?: string; file_version?: number } | null>(null);
-  const [hostDisconnected, setHostDisconnected] = useState(false);
-  const [graceCountdown, setGraceCountdown] = useState(0);
-  const fileVersionRef = useRef(0);
+  const [verifyResult, setVerifyResult] = useState<FileVerifyResult | null>(null);
+  const [roomStatus, setRoomStatus] = useState<RoomStatus>('waiting_file');
+  const [referenceFile, setReferenceFile] = useState<ReferenceFileState>(EMPTY_REFERENCE_FILE);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [videoReady, setVideoReady] = useState(false);
+  const [interactionHint, setInteractionHint] = useState<string | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<SessionNotice | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
-  const lastSeqRef = useRef(0);
-  const graceTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-
-  // Fetch room details + chat history via REST
-  useEffect(() => {
-    if (!roomId) return;
-    const activeRoomId = roomId;
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const data = await getRoom(activeRoomId);
-        if (cancelled) return;
-        setRoom(data);
-        setParticipants(
-          data.participants.map((p) => ({
-            user_id: p.user_id,
-            username: p.username,
-            is_ready: p.is_ready,
-          }))
-        );
-        // Chat history is optional — don't fail the whole page
-        try {
-          const history = await getChatHistory(activeRoomId);
-          if (!cancelled) setMessages(history.messages);
-        } catch {
-          // Chat history failed, non-critical
-        }
-      } catch (err: unknown) {
-        const axiosErr = err as { response?: { status?: number; data?: unknown } };
-        console.error('Failed to load room:', axiosErr.response?.status, axiosErr.response?.data);
-        if (!cancelled) {
-          const status = axiosErr.response?.status;
-          if (status === 404 || status === 403) {
-            navigate('/');
-          }
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => { cancelled = true; };
-  }, [roomId, navigate]);
-
-  // Handle WS messages
-  const handleWsMessage = useCallback(
-    (msg: WsMessage) => {
-      // Update global seq for ALL message types (not just sync)
-      if (msg.seq !== undefined && msg.seq > lastSeqRef.current) {
-        lastSeqRef.current = msg.seq;
-      }
-
-      switch (msg.type) {
-        case 'room_state':
-          setParticipants(msg.participants || []);
-          if (msg.file_version !== undefined) {
-            fileVersionRef.current = msg.file_version;
-          }
-          // Apply playback state for late joiners / reconnect
-          if (msg.playback_state) {
-            const video = videoRef.current;
-            if (video) {
-              const targetSec = (msg.playback_state.current_time_ms || 0) / 1000;
-              video.currentTime = targetSec;
-              if (msg.playback_state.is_playing) {
-                video.play().catch(() => {});
-              } else if (!video.paused) {
-                video.pause();
-              }
-            }
-          }
-          break;
-        case 'user_joined':
-          setParticipants((prev) => {
-            if (prev.some((p) => p.user_id === msg.user_id)) return prev;
-            return [...prev, { user_id: msg.user_id, username: msg.username, is_ready: false }];
-          });
-          break;
-        case 'user_left':
-          setParticipants((prev) => prev.filter((p) => p.user_id !== msg.user_id));
-          break;
-        case 'chat_message':
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: msg.id,
-              user_id: msg.user_id,
-              username: msg.username,
-              content: msg.content,
-              created_at: msg.created_at,
-            },
-          ]);
-          break;
-        case 'file_verify_response':
-          setVerifyResult({ match: msg.match, reason: msg.reason, file_version: msg.file_version });
-          if (msg.match && msg.file_version !== undefined) {
-            fileVersionRef.current = msg.file_version;
-          }
-          break;
-        case 'file_changed':
-          // Host changed file, reset everyone's state
-          fileVersionRef.current = msg.file_version || 0;
-          setFileUrl(null);
-          setVerifyResult(null);
-          break;
-        case 'participant_ready':
-          setParticipants((prev) =>
-            prev.map((p) =>
-              p.user_id === msg.user_id ? { ...p, is_ready: msg.is_ready } : p
-            )
-          );
-          break;
-        case 'participant_status':
-          setParticipants((prev) =>
-            prev.map((p) =>
-              p.user_id === msg.user_id ? { ...p, status: msg.status } : p
-            )
-          );
-          break;
-        case 'sync_state':
-        case 'sync_check':
-        case 'sync_correction':
-        case 'playback_rate':
-          syncMessageRef.current(msg);
-          break;
-        case 'host_disconnected': {
-          setHostDisconnected(true);
-          const totalSec = Math.round((msg.grace_period_ms || 30000) / 1000);
-          setGraceCountdown(totalSec);
-          clearInterval(graceTimerRef.current);
-          let remaining = totalSec;
-          graceTimerRef.current = setInterval(() => {
-            remaining--;
-            setGraceCountdown(remaining);
-            if (remaining <= 0) clearInterval(graceTimerRef.current);
-          }, 1000);
-          break;
-        }
-        case 'host_reconnected':
-          setHostDisconnected(false);
-          setGraceCountdown(0);
-          clearInterval(graceTimerRef.current);
-          break;
-        case 'room_closed':
-          clearInterval(graceTimerRef.current);
-          navigate('/');
-          break;
-        case 'error':
-          if (msg.code === 'tab_replaced') {
-            navigate('/');
-          }
-          break;
-      }
-    },
-    [navigate]
+  const lastSeqRef = useRef<number | null>(null);
+  const fileVersionRef = useRef(0);
+  const syncMessageRef = useRef<(message: SyncRelatedMessage) => void>(() => {});
+  const fileUrlRef = useRef<string | null>(null);
+  const interactionHintTimerRef = useRef<number | null>(null);
+  const sessionNoticeTimerRef = useRef<number | null>(null);
+  const previousConnectionStateRef = useRef<'connected' | 'connecting' | 'reconnecting' | null>(
+    null
   );
+  const previousHostDisconnectedRef = useRef(false);
 
-  const { send, isConnected } = useWebSocket({
+  fileUrlRef.current = fileUrl;
+
+  useEffect(() => {
+    fileVersionRef.current = fileVersion;
+  }, [fileVersion]);
+
+  useLoadRoom({
+    roomId: roomId || '',
+    setRoom,
+    setParticipants,
+    setMessages,
+    setChatCursor,
+    setChatLoadError,
+    setLoading,
+    navigate,
+  });
+
+  const clearPlaybackState = useCallback(() => {
+    setVideoReady(false);
+    setVideoError(null);
+  }, []);
+
+  const handleWsMessage = useRoomWsHandler({
+    navigate,
+    setParticipants,
+    addMessage,
+    setFileUrl,
+    setFileVersion,
+    fileVersionRef,
+    setHostDisconnected,
+    setGraceCountdown,
+    setVerifyResult,
+    setRoomStatus,
+    setReferenceFile,
+    clearPlaybackState,
+    onSyncMessage: (message) => syncMessageRef.current(message),
+  });
+
+  const { send, isConnected, isReconnecting } = useWebSocket({
     roomId: roomId || '',
     onMessage: handleWsMessage,
     lastSeqRef,
     fileVersionRef,
-  });
+    onFatalTicketError: (status) => {
+      const arrivalNotice = getHomeArrivalNotice(
+        status === 403
+          ? 'access_lost'
+          : status === 404
+          ? 'room_not_found'
+          : 'room_connection_failed'
+      );
 
-  const { handleSyncMessage } = useVideoSync({
+      navigate('/', { state: { arrivalNotice } });
+    },
+  });
+  const connectionState = isConnected
+    ? 'connected'
+    : isReconnecting
+    ? 'reconnecting'
+    : 'connecting';
+
+  const clearSessionNoticeTimer = useCallback(() => {
+    if (sessionNoticeTimerRef.current !== null) {
+      window.clearTimeout(sessionNoticeTimerRef.current);
+      sessionNoticeTimerRef.current = null;
+    }
+  }, []);
+
+  const showTimedSessionNotice = useCallback(
+    (notice: SessionNotice, durationMs = 3200) => {
+      clearSessionNoticeTimer();
+      setSessionNotice(notice);
+      sessionNoticeTimerRef.current = window.setTimeout(() => {
+        setSessionNotice(null);
+        sessionNoticeTimerRef.current = null;
+      }, durationMs);
+    },
+    [clearSessionNoticeTimer]
+  );
+
+  const { handleSyncMessage, autoplayBlocked, resumePlayback } = useVideoSync({
     videoRef,
     send,
-    fileVersion: fileVersionRef.current,
+    fileVersion,
   });
 
-  const syncMessageRef = useRef(handleSyncMessage);
-  syncMessageRef.current = handleSyncMessage;
+  useEffect(() => {
+    syncMessageRef.current = handleSyncMessage;
+  }, [handleSyncMessage]);
 
   const handleVerifyRequest = useCallback(
     (hash: string, size: number, durationMs: number, fileName: string) => {
+      setVerifyResult(null);
+      clearPlaybackState();
       send('file_verify_request', {
-        file_hash: hash, file_size: size, file_duration_ms: durationMs, file_name: fileName,
+        file_hash: hash,
+        file_size: size,
+        file_duration_ms: durationMs,
+        file_name: fileName,
       });
     },
-    [send]
+    [clearPlaybackState, send]
   );
 
   const handleFileVerified = useCallback(
     (url: string) => {
+      clearPlaybackState();
       setFileUrl(url);
-      // Don't send ready yet — wait for video canplay event
     },
-    []
+    [clearPlaybackState, setFileUrl]
   );
 
   const handleVideoCanPlay = useCallback(() => {
-    send('ready', { file_version: fileVersionRef.current });
-  }, [send]);
+    setVideoReady(true);
+    setVideoError(null);
+    send('ready', { file_version: fileVersion });
+  }, [fileVersion, send]);
 
   const handleVideoError = useCallback(
     (errorCode: string) => {
+      setVideoError(errorCode);
       send('playback_error', { error_code: errorCode });
     },
     [send]
   );
 
+  const showInteractionHint = useCallback((message = 'Only the host can control playback.') => {
+    if (interactionHintTimerRef.current !== null) {
+      window.clearTimeout(interactionHintTimerRef.current);
+    }
+
+    setInteractionHint(message);
+    interactionHintTimerRef.current = window.setTimeout(() => {
+      setInteractionHint(null);
+    }, 2200);
+  }, []);
+
   const handleVideoClickToggle = useCallback(() => {
-    if (room?.host_id !== user?.id) return;
+    if (room?.host_id !== user?.id) {
+      showInteractionHint();
+      return;
+    }
+
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      return;
+    }
+
     const timeMs = Math.round(video.currentTime * 1000);
+
     if (video.paused) {
       video.play().catch(() => {});
-      send('play', { current_time_ms: timeMs, file_version: fileVersionRef.current });
+      send('play', { current_time_ms: timeMs, file_version: fileVersion });
+      setRoomStatus('playing');
     } else {
       video.pause();
-      send('pause', { current_time_ms: timeMs, file_version: fileVersionRef.current });
+      send('pause', { current_time_ms: timeMs, file_version: fileVersion });
+      setRoomStatus('paused');
     }
-  }, [room?.host_id, user?.id, send]);
+  }, [fileVersion, room?.host_id, send, showInteractionHint, user?.id]);
 
   const handlePlay = useCallback(
-    (timeMs: number) => send('play', { current_time_ms: timeMs, file_version: fileVersionRef.current }),
-    [send]
+    (timeMs: number) => {
+      setRoomStatus('playing');
+      return send('play', { current_time_ms: timeMs, file_version: fileVersion });
+    },
+    [fileVersion, send]
   );
 
   const handlePause = useCallback(
-    (timeMs: number) => send('pause', { current_time_ms: timeMs, file_version: fileVersionRef.current }),
-    [send]
+    (timeMs: number) => {
+      setRoomStatus('paused');
+      return send('pause', { current_time_ms: timeMs, file_version: fileVersion });
+    },
+    [fileVersion, send]
   );
 
   const handleSeek = useCallback(
-    (timeMs: number) => send('seek', { current_time_ms: timeMs, file_version: fileVersionRef.current }),
-    [send]
+    (timeMs: number) => send('seek', { current_time_ms: timeMs, file_version: fileVersion }),
+    [fileVersion, send]
   );
 
-  const handleSendChat = useCallback(
-    (content: string): boolean => {
-      return send('chat_send', { content });
-    },
-    [send]
-  );
+  const handleSendChat = useCallback((content: string) => send('chat_send', { content }), [send]);
 
-  const handleLeave = async () => {
-    if (!roomId) return;
-    clearInterval(graceTimerRef.current);
-    await leaveRoom(roomId);
-    navigate('/');
-  };
+  const handleLoadMoreChat = useCallback(async (): Promise<boolean> => {
+    if (!roomId || !chatCursor) {
+      return false;
+    }
 
-  // Cleanup grace timer on unmount
+    try {
+      const history = await getChatHistory(roomId, chatCursor);
+      setMessages((current) => {
+        const existing = new Set(current.map((message) => message.id));
+        const older = history.messages.filter((message) => !existing.has(message.id));
+        return [...older, ...current];
+      });
+      setChatCursor(history.next_cursor ?? null);
+      setChatLoadError(false);
+      return true;
+    } catch {
+      setChatLoadError(true);
+      return false;
+    }
+  }, [chatCursor, roomId, setChatCursor, setChatLoadError, setMessages]);
+
+  const handleRetryChatLoad = useCallback(async () => {
+    if (!roomId) {
+      return;
+    }
+
+    try {
+      const history = await getChatHistory(roomId);
+      setMessages(history.messages);
+      setChatCursor(history.next_cursor ?? null);
+      setChatLoadError(false);
+    } catch {
+      setChatLoadError(true);
+    }
+  }, [roomId, setChatCursor, setChatLoadError, setMessages]);
+
+  const handleLeave = useCallback(async () => {
+    if (!roomId) {
+      return;
+    }
+
+    const isHost = room?.host_id === user?.id;
+    if (isHost) {
+      const confirmed = await confirm({
+        eyebrow: 'Leave As Host',
+        title: 'Close the room for everyone?',
+        description:
+          'Leaving as host ends the synced session and disconnects every participant in the room.',
+        confirmLabel: 'Leave room',
+        cancelLabel: 'Stay here',
+        tone: 'danger',
+      });
+
+      if (!confirmed) {
+        return;
+      }
+    } else if (preferences.confirmViewerLeave) {
+      const confirmed = await confirm({
+        eyebrow: 'Leave Room',
+        title: 'Leave this synced session?',
+        description:
+          'You will return to the dashboard and can rejoin later from your recent rooms if the session is still active.',
+        confirmLabel: 'Leave room',
+        cancelLabel: 'Stay here',
+        tone: 'warning',
+      });
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      await leaveRoom(roomId);
+      pushToast({
+        tone: 'primary',
+        title: isHost ? 'Room closed' : 'You left the room',
+        description: isHost
+          ? 'The synced session was closed for everyone.'
+          : 'You can rejoin later from the dashboard.',
+      });
+    } finally {
+      navigate('/');
+    }
+  }, [
+    confirm,
+    navigate,
+    preferences.confirmViewerLeave,
+    pushToast,
+    room?.host_id,
+    roomId,
+    user?.id,
+  ]);
+
   useEffect(() => {
-    return () => clearInterval(graceTimerRef.current);
+    const previousConnectionState = previousConnectionStateRef.current;
+
+    if (previousConnectionState === null) {
+      previousConnectionStateRef.current = connectionState;
+      return;
+    }
+
+    if (previousConnectionState === connectionState) {
+      return;
+    }
+
+    if (connectionState === 'reconnecting') {
+      clearSessionNoticeTimer();
+      setSessionNotice({
+        tone: 'warning',
+        title: 'Reconnecting to the live room',
+        description:
+          'SyncWatch is restoring the room channel without discarding your local file or playback position.',
+      });
+    } else if (previousConnectionState === 'reconnecting' && connectionState === 'connected') {
+      showTimedSessionNotice(
+        {
+          tone: 'success',
+          title: 'Connection restored',
+          description: 'Realtime sync is back and the room timeline is current again.',
+        },
+        3400
+      );
+      pushToast({
+        tone: 'success',
+        title: 'Connection restored',
+        description: 'The live room link is healthy again.',
+        durationMs: 3200,
+      });
+    } else if (connectionState === 'connected') {
+      clearSessionNoticeTimer();
+      setSessionNotice(null);
+    }
+
+    previousConnectionStateRef.current = connectionState;
+  }, [clearSessionNoticeTimer, connectionState, pushToast, showTimedSessionNotice]);
+
+  useEffect(() => {
+    const previousHostDisconnected = previousHostDisconnectedRef.current;
+
+    if (!previousHostDisconnected && hostDisconnected) {
+      clearSessionNoticeTimer();
+      setSessionNotice(null);
+    }
+
+    if (previousHostDisconnected && !hostDisconnected) {
+      showTimedSessionNotice(
+        {
+          tone: 'success',
+          title: 'Host is back in the room',
+          description:
+            'The session stayed preserved, and shared playback control is available again.',
+        },
+        3600
+      );
+      pushToast({
+        tone: 'success',
+        title: 'Host reconnected',
+        description: 'The room recovered without losing its current state.',
+        durationMs: 3400,
+      });
+    }
+
+    previousHostDisconnectedRef.current = hostDisconnected;
+  }, [clearSessionNoticeTimer, hostDisconnected, pushToast, showTimedSessionNotice]);
+
+  useEffect(() => {
+    return () => {
+      if (interactionHintTimerRef.current !== null) {
+        window.clearTimeout(interactionHintTimerRef.current);
+      }
+      if (sessionNoticeTimerRef.current !== null) {
+        window.clearTimeout(sessionNoticeTimerRef.current);
+      }
+      if (fileUrlRef.current) {
+        URL.revokeObjectURL(fileUrlRef.current);
+      }
+    };
   }, []);
+
+  const readyCount = participants.filter((participant) => participant.is_ready).length;
+  const isHost = room?.host_id === user?.id;
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-surface">
-        <div className="text-on-surface-variant">Loading room...</div>
+      <div className="relative flex h-screen items-center justify-center overflow-hidden bg-surface px-4 text-on-surface">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(180,197,255,0.14),transparent_24%),linear-gradient(180deg,#090909_0%,#111111_45%,#151515_100%)]" />
+        </div>
+        <StatePanel
+          eyebrow="Preparing Room"
+          title="Loading the synced session"
+          description="Restoring room details, participant presence and recent chat before the player opens."
+          icon={<BrandMarkIcon size={26} />}
+          tone="primary"
+          className="relative z-10 w-full max-w-md"
+          aria-live="polite"
+        />
       </div>
     );
   }
 
-  if (!room) return null;
+  if (!room) {
+    return (
+      <div className="relative flex h-screen items-center justify-center overflow-hidden bg-surface px-4 text-on-surface">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(180,197,255,0.14),transparent_24%),linear-gradient(180deg,#090909_0%,#111111_45%,#151515_100%)]" />
+        </div>
+        <StatePanel
+          eyebrow="Room Unavailable"
+          title="This session is no longer open"
+          description="The room may have been removed, or your access to it has changed. You can safely return to the dashboard."
+          icon={<BrandMarkIcon size={26} />}
+          tone="warning"
+          className="relative z-10 w-full max-w-md"
+          actions={
+            <Button variant="primary" size="md" onClick={() => navigate('/')}>
+              Back to dashboard
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen w-full flex flex-col overflow-x-hidden overflow-y-auto bg-surface">
-      {/* Top bar */}
-      <header className="bg-surface/80 backdrop-blur-xl flex justify-between items-center px-4 md:px-12 h-14 md:h-16 shadow-[0px_24px_48px_rgba(0,0,0,0.4),0px_0px_12px_rgba(0,98,255,0.1)] z-50 shrink-0">
-        <div className="flex items-center gap-2 md:gap-4 min-w-0">
-          <Link to="/" className="text-lg md:text-xl font-black tracking-tighter text-primary shrink-0">
-            SyncWatch
-          </Link>
-          <div className="h-4 w-[1px] bg-outline-variant/30 hidden md:block" />
-          <div className="flex flex-col min-w-0">
-            <span className="text-on-surface text-sm truncate">{room.name}</span>
-            <span className="text-[10px] uppercase tracking-[0.1em] text-on-surface-variant hidden md:block">
-              Room Code:{' '}
-              <button
-                onClick={() => navigator.clipboard.writeText(room.room_code)}
-                className="text-primary-container hover:text-primary transition-colors cursor-pointer"
-              >
-                {room.room_code}
-              </button>
-              {isConnected && (
-                <span className="ml-3 text-green-500">● Connected</span>
-              )}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 md:gap-6 shrink-0">
-          {/* Mobile: toggle sidebar */}
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="md:hidden text-on-surface-variant hover:text-primary text-xl cursor-pointer"
-          >
-            💬
-          </button>
-          <button
-            onClick={handleLeave}
-            className="text-[10px] md:text-[12px] uppercase tracking-[0.1em] px-3 md:px-6 py-2 bg-error-container text-on-surface hover:bg-error transition-all cursor-pointer"
-          >
-            Leave
-          </button>
-        </div>
-      </header>
+    <div className="relative min-h-screen w-full overflow-x-hidden overflow-y-auto bg-surface text-on-surface">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(180,197,255,0.14),transparent_24%),linear-gradient(180deg,#090909_0%,#111111_45%,#151515_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:36px_36px] opacity-25" />
+      </div>
 
-      <main className="flex flex-1 relative">
-        {/* Video area */}
-        <section className="flex-1 md:flex-[3] flex flex-col relative">
-          {/* Host disconnect overlay */}
-          {hostDisconnected && (
-            <div className="absolute inset-0 z-40 bg-black/70 flex items-center justify-center">
-              <div className="text-center space-y-4">
-                <div className="w-16 h-16 mx-auto border-4 border-error/30 border-t-error rounded-full animate-spin" />
-                <h2 className="text-xl font-bold text-on-surface">Host lost connection</h2>
-                <p className="text-on-surface-variant">
-                  Waiting for reconnect: <span className="text-error font-mono">{graceCountdown}s</span>
-                </p>
-              </div>
-            </div>
-          )}
-          {!fileUrl ? (
-            <FileSelector
+      <div className="relative z-10 flex min-h-screen flex-col">
+        <RoomHeader
+          roomName={room.name}
+          roomCode={room.room_code}
+          connectionState={connectionState}
+          isHost={Boolean(isHost)}
+          roomStatus={roomStatus}
+          readyParticipants={readyCount}
+          totalParticipants={participants.length}
+          sidebarOpen={sidebarOpen}
+          onLeave={handleLeave}
+          onToggleSidebar={() => setSidebarOpen((current) => !current)}
+        />
+
+        <main className="flex flex-1 px-3 pb-3 md:px-4 md:pb-4">
+          <div className="flex flex-1 items-stretch gap-3 md:gap-4">
+            <VideoArea
+              roomStatus={roomStatus}
+              fileUrl={fileUrl}
+              videoRef={videoRef}
+              isHost={Boolean(isHost)}
+              connectionState={connectionState}
+              hostDisconnected={hostDisconnected}
+              graceCountdown={graceCountdown}
+              referenceFileName={referenceFile.fileName}
+              videoError={videoError}
+              videoReady={videoReady}
+              readyParticipants={readyCount}
+              totalParticipants={participants.length}
+              autoplayBlocked={autoplayBlocked}
+              interactionHint={interactionHint}
+              sessionNotice={sessionNotice}
+              onResumePlayback={resumePlayback}
+              onNonHostControlAttempt={showInteractionHint}
               onFileVerified={handleFileVerified}
               onVerifyRequest={handleVerifyRequest}
+              onVideoCanPlay={handleVideoCanPlay}
+              onVideoError={handleVideoError}
+              onVideoClickToggle={handleVideoClickToggle}
+              onPlay={handlePlay}
+              onPause={handlePause}
+              onSeek={handleSeek}
               verifyResult={verifyResult}
-              isHost={room.host_id === user?.id}
             />
-          ) : (
-            <VideoPlayer
-              ref={videoRef}
-              src={fileUrl}
-              onCanPlay={handleVideoCanPlay}
-              onError={handleVideoError}
-              onClickToggle={handleVideoClickToggle}
+
+            <RoomSidebar
+              roomName={room.name}
+              roomCode={room.room_code}
+              connectionState={connectionState}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              sidebarOpen={sidebarOpen}
+              closeSidebar={() => setSidebarOpen(false)}
+              participants={participants}
+              messages={messages}
+              currentUserId={user?.id || ''}
+              hostId={room.host_id}
+              onSendChat={handleSendChat}
+              onLoadMoreChat={handleLoadMoreChat}
+              hasMoreChat={chatCursor !== null}
+              chatLoadError={chatLoadError}
+              onRetryChatLoad={handleRetryChatLoad}
             />
-          )}
-
-          <PlaybackControls
-            videoRef={videoRef}
-            isHost={room.host_id === user?.id}
-            onPlay={handlePlay}
-            onPause={handlePause}
-            onSeek={handleSeek}
-            videoReady={!!fileUrl}
-          />
-        </section>
-
-        {/* Overlay backdrop for mobile */}
-        {sidebarOpen && (
-          <div
-            className="fixed inset-0 bg-black/50 z-40 md:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Side panel: overlay on mobile, static on desktop, hidden in theater mode */}
-        <aside className={`
-          fixed right-0 top-14 bottom-0 w-80 z-50 transition-transform duration-300
-          md:static md:top-auto md:bottom-auto md:z-auto md:translate-x-0
-          ${sidebarOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
-          bg-[#0e0e0e] border-l border-outline-variant/10 flex flex-col shrink-0
-        `}>
-          <div className="p-6 border-b border-outline-variant/10 shrink-0">
-            <div className="flex items-center gap-3 mb-2">
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-primary-container shadow-[0_0_8px_#0062ff]' : 'bg-outline-variant'}`} />
-              <span className="text-[10px] uppercase tracking-[0.1em] text-on-surface-variant">
-                {isConnected ? 'Sync Active' : 'Connecting...'}
-              </span>
-            </div>
-            <h3 className="font-black text-sm tracking-tight">Sync Room</h3>
           </div>
-
-          {/* Tabs */}
-          <div className="flex shrink-0">
-            <button
-              onClick={() => setActiveTab('chat')}
-              className={`flex-1 flex flex-col items-center py-3 transition-all cursor-pointer ${
-                activeTab === 'chat'
-                  ? 'text-primary border-l-2 border-primary-container bg-gradient-to-r from-primary-container/10 to-transparent'
-                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
-              }`}
-            >
-              <span className="text-lg mb-1">💬</span>
-              <span className="text-[9px] uppercase tracking-[0.1em]">Chat</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('participants')}
-              className={`flex-1 flex flex-col items-center py-3 transition-all cursor-pointer ${
-                activeTab === 'participants'
-                  ? 'text-primary border-l-2 border-primary-container bg-gradient-to-r from-primary-container/10 to-transparent'
-                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
-              }`}
-            >
-              <span className="text-lg mb-1">👥</span>
-              <span className="text-[9px] uppercase tracking-[0.1em]">
-                Participants ({participants.length})
-              </span>
-            </button>
-          </div>
-
-          {/* Tab content */}
-          <div className="flex-1 overflow-hidden flex flex-col">
-            {activeTab === 'chat' ? (
-              <ChatPanel
-                messages={messages}
-                onSend={handleSendChat}
-                currentUserId={user?.id || ''}
-              />
-            ) : (
-              <ParticipantList
-                participants={participants}
-                hostId={room.host_id}
-              />
-            )}
-          </div>
-        </aside>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

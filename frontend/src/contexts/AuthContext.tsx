@@ -1,5 +1,6 @@
 import { createContext, useCallback, useEffect, useState, type ReactNode } from 'react';
-import { getMe, login as apiLogin } from '../api/auth';
+import { login as apiLogin, getMe } from '../api/auth';
+import { AUTH_LOGOUT_EVENT, clearAuthStorage, storeAuthTokens } from '../api/client';
 import type { LoginRequest, User } from '../types/auth';
 
 interface AuthState {
@@ -21,40 +22,47 @@ export const AuthContext = createContext<AuthState>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => Boolean(localStorage.getItem('access_token')));
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
-    if (token) {
-      getMe()
-        .then(setUser)
-        .catch(() => {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-        })
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false); // eslint-disable-line react-hooks/set-state-in-effect
+    if (!token) {
+      return;
     }
+
+    getMe()
+      .then(setUser)
+      .catch(() => {
+        clearAuthStorage();
+      })
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  // When the axios interceptor gives up on refreshing tokens, it dispatches
+  // `syncwatch:auth-logout`. Without this listener the user state would stay
+  // populated with a dead session, and ProtectedRoute would keep rendering
+  // pages that can't reach the API.
+  useEffect(() => {
+    const handleLogout = () => setUser(null);
+    window.addEventListener(AUTH_LOGOUT_EVENT, handleLogout);
+    return () => window.removeEventListener(AUTH_LOGOUT_EVENT, handleLogout);
   }, []);
 
   const login = useCallback(async (data: LoginRequest) => {
     const tokens = await apiLogin(data);
-    localStorage.setItem('access_token', tokens.access_token);
-    localStorage.setItem('refresh_token', tokens.refresh_token);
+    storeAuthTokens(tokens);
     const me = await getMe();
     setUser(me);
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    clearAuthStorage();
     setUser(null);
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isAuthenticated: !!user, login, logout }}
+      value={{ user, isLoading, isAuthenticated: Boolean(user), login, logout }}
     >
       {children}
     </AuthContext.Provider>

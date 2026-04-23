@@ -42,7 +42,13 @@ async def create_room(db: AsyncSession, name: str, host_id: uuid.UUID) -> Room:
 async def get_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> Room:
     result = await db.execute(
         select(Room)
-        .options(selectinload(Room.participants).selectinload(RoomParticipant.user))
+        # Eager-load `host` too: the API response reads `room.host.username`,
+        # and async SQLAlchemy + asyncpg can't do a lazy load outside the
+        # greenlet — it would raise MissingGreenlet at response time.
+        .options(
+            selectinload(Room.participants).selectinload(RoomParticipant.user),
+            selectinload(Room.host),
+        )
         .where(Room.id == room_id, Room.is_active == True)
     )
     room = result.scalar_one_or_none()
@@ -127,7 +133,8 @@ async def join_room(db: AsyncSession, room_code: str, user_id: uuid.UUID) -> Roo
     return room
 
 
-async def leave_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> None:
+async def leave_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    """Returns True if the leaving user was the host (room became inactive)."""
     result = await db.execute(
         select(RoomParticipant).where(
             RoomParticipant.room_id == room_id,
@@ -143,10 +150,12 @@ async def leave_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -
 
     room_result = await db.execute(select(Room).where(Room.id == room_id))
     room = room_result.scalar_one_or_none()
-    if room and room.host_id == user_id:
+    was_host = bool(room and room.host_id == user_id)
+    if was_host:
         room.is_active = False
 
     await db.commit()
+    return was_host
 
 
 async def delete_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> None:

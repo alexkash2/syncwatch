@@ -1,0 +1,17 @@
+{
+  "name": "SyncWatch",
+  "short_name": "SyncWatch",
+  "description": "Local-first synced watch rooms with shared playback, file verification and live room chat.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05070d",
+  "theme_color": "#0b1736",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

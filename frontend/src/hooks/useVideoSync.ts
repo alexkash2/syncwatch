@@ -1,85 +1,161 @@
-import { useCallback, useEffect, useRef } from 'react';
-import type { WsMessage } from '../types/ws';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
+import type { SyncRelatedMessage } from '../types/ws';
 
 interface UseVideoSyncOptions {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
+  videoRef: RefObject<HTMLVideoElement | null>;
   send: (type: string, payload?: Record<string, unknown>) => boolean;
   fileVersion: number;
 }
 
-export function useVideoSync({ videoRef, send, fileVersion }: UseVideoSyncOptions) {
-  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+export function useVideoSync({
+  videoRef,
+  send,
+  fileVersion,
+}: UseVideoSyncOptions) {
+  const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  // Track whatever the room currently thinks is_playing so `resumePlayback`
+  // can refuse to kick off local playback while the shared timeline is paused.
+  const isRoomPlayingRef = useRef(false);
+
+  const sendSyncReport = useCallback(
+    (video: HTMLVideoElement) => {
+      let playbackStatus: 'playing' | 'paused' | 'buffering' | 'error' | 'waiting_interaction' =
+        'playing';
+
+      if (autoplayBlocked) {
+        playbackStatus = 'waiting_interaction';
+      } else if (video.error) {
+        playbackStatus = 'error';
+      } else if (video.readyState < 3 && !video.paused) {
+        playbackStatus = 'buffering';
+      } else if (video.paused) {
+        playbackStatus = 'paused';
+      }
+
+      send('sync_report', {
+        current_time_ms: Math.round(video.currentTime * 1000),
+        is_playing: !video.paused,
+        buffer_health_ms: getBufferHealthMs(video),
+        playback_status: playbackStatus,
+      });
+    },
+    [autoplayBlocked, send]
+  );
+
+  const resumePlayback = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    // If the shared room is currently paused, do NOT start local playback on
+    // user tap — that would desync this viewer against the host. Just dismiss
+    // the overlay; the next sync_state with is_playing=true will retry play(),
+    // and by then the browser already has the user-gesture it wanted.
+    if (!isRoomPlayingRef.current) {
+      setAutoplayBlocked(false);
+      return;
+    }
+
+    video
+      .play()
+      .then(() => setAutoplayBlocked(false))
+      .catch(() => {
+        // Keep overlay visible until the browser accepts user interaction.
+      });
+  }, [videoRef]);
 
   const handleSyncMessage = useCallback(
-    (msg: WsMessage) => {
+    (msg: SyncRelatedMessage) => {
       const video = videoRef.current;
-      if (!video) return;
+      if (!video) {
+        return;
+      }
 
-      // Seq is already checked and updated by handleWsMessage in RoomPage — no duplicate check here.
-
-      // file_version check for sync messages
-      if (msg.file_version !== undefined && msg.file_version !== fileVersion) return;
+      if (msg.file_version !== undefined && msg.file_version !== fileVersion) {
+        return;
+      }
 
       switch (msg.type) {
         case 'sync_state': {
-          const targetSec = (msg.current_time_ms || 0) / 1000;
-          if (Math.abs(video.currentTime - targetSec) > 0.3) {
-            video.currentTime = targetSec;
+          isRoomPlayingRef.current = msg.is_playing;
+
+          const targetSeconds = msg.current_time_ms / 1000;
+          const driftSeconds = Math.abs(video.currentTime - targetSeconds);
+
+          if (driftSeconds > 0.25) {
+            video.currentTime = targetSeconds;
           }
-          if (msg.is_playing && video.paused) {
-            video.play().catch(() => {
-              send('playback_error', { error_code: 'autoplay_blocked' });
-            });
-          } else if (!msg.is_playing && !video.paused) {
-            video.pause();
+
+          if (msg.is_playing) {
+            if (video.paused) {
+              video
+                .play()
+                .then(() => setAutoplayBlocked(false))
+                .catch(() => {
+                  setAutoplayBlocked(true);
+                  send('playback_error', { error_code: 'autoplay_blocked' });
+                });
+            }
+          } else {
+            // Room paused. Always clear the autoplay overlay even if the local
+            // video was never started — otherwise the viewer stays prompted to
+            // "resume" into a paused room, and tapping desynced the timeline.
+            setAutoplayBlocked(false);
+            if (!video.paused) {
+              video.pause();
+            }
           }
           break;
         }
 
-        case 'sync_check': {
-          // Only report — server decides correction
-          const currentMs = Math.round(video.currentTime * 1000);
-          const buffered = video.buffered.length > 0
-            ? Math.round((video.buffered.end(video.buffered.length - 1) - video.currentTime) * 1000)
-            : 0;
-
-          let status = 'playing';
-          if (video.paused) status = 'paused';
-          if (video.readyState < 3) status = 'buffering';
-
-          send('sync_report', {
-            current_time_ms: currentMs,
-            is_playing: !video.paused,
-            buffer_health_ms: buffered,
-            playback_status: status,
-          });
+        case 'sync_check':
+          sendSyncReport(video);
           break;
-        }
 
-        case 'sync_correction': {
-          const targetSec = (msg.target_time_ms || 0) / 1000;
+        case 'sync_correction':
           if (msg.action === 'seek') {
-            video.currentTime = targetSec;
+            video.currentTime = msg.target_time_ms / 1000;
           }
           break;
-        }
 
-        case 'playback_rate': {
-          video.playbackRate = msg.rate || 1.0;
-          clearTimeout(nudgeTimer.current);
-          nudgeTimer.current = setTimeout(() => {
-            if (videoRef.current) videoRef.current.playbackRate = 1.0;
+        case 'playback_rate':
+          video.playbackRate = msg.rate;
+          clearTimeout(nudgeTimerRef.current);
+          nudgeTimerRef.current = setTimeout(() => {
+            if (videoRef.current) {
+              videoRef.current.playbackRate = 1.0;
+            }
           }, 5000);
           break;
-        }
       }
     },
-    [videoRef, send, fileVersion]
+    [fileVersion, send, sendSyncReport, videoRef]
   );
 
   useEffect(() => {
-    return () => clearTimeout(nudgeTimer.current);
+    return () => clearTimeout(nudgeTimerRef.current);
   }, []);
 
-  return { handleSyncMessage };
+  return { handleSyncMessage, autoplayBlocked, resumePlayback };
+}
+
+function getBufferHealthMs(video: HTMLVideoElement) {
+  for (let index = 0; index < video.buffered.length; index += 1) {
+    const start = video.buffered.start(index);
+    const end = video.buffered.end(index);
+
+    if (video.currentTime >= start && video.currentTime <= end) {
+      return Math.round((end - video.currentTime) * 1000);
+    }
+  }
+
+  return 0;
 }

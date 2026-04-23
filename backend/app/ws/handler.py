@@ -1,9 +1,14 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+logger = logging.getLogger("syncwatch.ws")
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
+from app.core.rate_limit import RateLimiter, register_limiter_instance
 from app.core.security import validate_ws_ticket
 from app.database import async_session
 from app.models.room import Room
@@ -16,6 +21,27 @@ from app.ws.sync import apply_play, apply_pause, apply_seek, evaluate_drift, get
 router = APIRouter()
 
 MAX_CHAT_LENGTH = 2000
+
+# Per-user limits for WS message categories. The chat limit is deliberately
+# stricter (spam prevention); playback control can burst during scrubbing.
+# Registered so `reap_all()` and test teardown touch them too.
+_chat_limiter = register_limiter_instance(RateLimiter(max_events=20, window_seconds=10))
+_control_limiter = register_limiter_instance(RateLimiter(max_events=60, window_seconds=10))
+_msg_limiter = register_limiter_instance(RateLimiter(max_events=200, window_seconds=10))
+# A host can otherwise spam file_verify_request → file_changed broadcasts at
+# the global cap (~20 Hz). Keep changes rare.
+_verify_limiter = register_limiter_instance(RateLimiter(max_events=5, window_seconds=10))
+
+
+def _allowed_ws_origin(origin: str | None) -> bool:
+    """Only accept WS handshakes whose Origin matches our configured CORS list.
+    Browsers always send Origin on cross-origin WS connects; same-origin may
+    omit it, so None is permitted.
+    """
+    if origin is None:
+        return True
+    allowed = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+    return origin in allowed
 
 
 async def _get_participant_info(db: AsyncSession, room_id: str):
@@ -58,6 +84,20 @@ async def _get_room_info(db: AsyncSession, room_id: str) -> dict | None:
 
 @router.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
+    # Reject cross-origin WS handshakes. Ticket + CORS on the ticket endpoint
+    # already mitigate this, but Origin enforcement is a cheap defence in depth.
+    if not _allowed_ws_origin(websocket.headers.get("origin")):
+        await websocket.close(code=4003, reason="Origin not allowed")
+        return
+
+    # Path param comes from the URL as a raw string; validate the UUID shape
+    # before touching the DB with it.
+    try:
+        uuid.UUID(room_id)
+    except (ValueError, TypeError):
+        await websocket.close(code=4001, reason="Invalid room id")
+        return
+
     ticket = websocket.query_params.get("ticket")
     if not ticket:
         await websocket.close(code=4001, reason="Missing ticket")
@@ -73,6 +113,21 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     if expected_room != room_id:
         await websocket.close(code=4003, reason="Ticket room mismatch")
         return
+
+    # Re-verify active membership at handshake time. The ticket was issued when
+    # the user was a participant, but they may have since called /leave — a
+    # valid ticket shouldn't be enough on its own.
+    async with async_session() as db:
+        still_member = await db.execute(
+            select(RoomParticipant.id).where(
+                RoomParticipant.room_id == uuid.UUID(room_id),
+                RoomParticipant.user_id == uuid.UUID(user_id),
+                RoomParticipant.left_at == None,
+            )
+        )
+        if still_member.scalar_one_or_none() is None:
+            await websocket.close(code=4003, reason="Not a participant")
+            return
 
     await websocket.accept()
 
@@ -106,6 +161,18 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         return
 
     host_id = room_info["host_id"]
+
+    # Sync in-memory RoomState.file_version with DB on first connect.
+    # Otherwise play/pause/seek/ready would be rejected as file_version_mismatch
+    # when joining a room that already has a file set.
+    state = manager.room_states.get(room_id)
+    if state is not None:
+        db_fv = room_info.get("file_version") or 0
+        if state.file_version == 0 and db_fv > 0:
+            state.file_version = db_fv
+            if room_info.get("file_hash"):
+                # Existing file: room is waiting for participants to become ready again
+                state.room_status = "waiting_ready"
 
     # Check if this is a reconnect (user was in grace period)
     reconnect_data = manager.is_reconnecting(room_id, user_id)
@@ -141,6 +208,10 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     if p:
                         p.is_ready = True
                         await db.commit()
+                # Also restore the verify-gate so a subsequent `ready` on the
+                # same file_version isn't rejected as not_verified.
+                if state:
+                    state.verified_users.add(user_id)
 
     # Send room_state to connecting user
     state = manager.room_states.get(room_id)
@@ -178,7 +249,18 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             data = await websocket.receive_json()
             msg_type = data.get("type")
 
+            # Global per-user WS message cap. Drop silently once exceeded so we
+            # don't amplify a spammer's traffic with error replies.
+            if not _msg_limiter.check(f"msg:{user_id}"):
+                continue
+
             if msg_type == "chat_send":
+                if not _chat_limiter.check(f"chat:{user_id}"):
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "error", "code": "rate_limited",
+                        "message": "You're sending messages too quickly.",
+                    })
+                    continue
                 content = data.get("content", "").strip()
                 if not content or len(content) > MAX_CHAT_LENGTH:
                     continue
@@ -198,6 +280,13 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 })
 
             elif msg_type == "file_verify_request":
+                if not _verify_limiter.check(f"verify:{user_id}"):
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "error",
+                        "code": "rate_limited",
+                        "message": "Too many file verify attempts; slow down.",
+                    })
+                    continue
                 file_hash = data.get("file_hash", "")
                 file_size = data.get("file_size", 0)
                 file_duration_ms = data.get("file_duration_ms", 0)
@@ -206,8 +295,19 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 async with async_session() as db:
                     ri = await _get_room_info(db, room_id)
 
+                if ri is None:
+                    # Room was deleted between handshake and this message.
+                    # Tell the client and skip the verify flow; close_room will
+                    # follow shortly for delete_room callers.
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "error",
+                        "code": "room_gone",
+                        "message": "Room no longer exists.",
+                    })
+                    continue
+
                 is_host = (user_id == host_id)
-                has_reference = ri and ri["file_hash"]
+                has_reference = bool(ri["file_hash"])
 
                 if is_host and (not has_reference or ri["file_hash"] != file_hash):
                     # Host sets or changes the reference file
@@ -228,10 +328,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                             state.room_status = "waiting_ready"
                             state.is_playing = False
                             state.current_time_ms = 0
+                            # New file_version invalidates prior verifications;
+                            # host just verified against it, so they're in.
+                            state.verified_users.clear()
+                            state.verified_users.add(user_id)
 
                         await manager.send_to_user(room_id, user_id, {
                             "type": "file_verify_response",
                             "match": True,
+                            "file_hash": file_hash,
                             "file_version": new_version,
                         })
                         # Broadcast file_changed + reset ready for all others
@@ -255,9 +360,13 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
 
                 elif is_host and has_reference and ri["file_hash"] == file_hash:
                     # Host re-selected same file
+                    state = manager.room_states.get(room_id)
+                    if state:
+                        state.verified_users.add(user_id)
                     await manager.send_to_user(room_id, user_id, {
                         "type": "file_verify_response",
                         "match": True,
+                        "file_hash": file_hash,
                         "file_version": ri["file_version"],
                     })
 
@@ -265,6 +374,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     await manager.send_to_user(room_id, user_id, {
                         "type": "file_verify_response",
                         "match": False,
+                        "file_hash": file_hash,
                         "reason": "Host has not selected a file yet.",
                     })
 
@@ -276,9 +386,14 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                         and abs((ri["file_duration_ms"] or 0) - file_duration_ms) <= 1000
                     )
                     reason = None if match else "File does not match the host's file."
+                    if match:
+                        state = manager.room_states.get(room_id)
+                        if state:
+                            state.verified_users.add(user_id)
                     await manager.send_to_user(room_id, user_id, {
                         "type": "file_verify_response",
                         "match": match,
+                        "file_hash": file_hash,
                         "reason": reason,
                         "file_version": ri["file_version"],
                     })
@@ -293,6 +408,17 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                         "type": "error",
                         "code": "file_version_mismatch",
                         "message": f"Expected file_version {current_version}, got {msg_file_version}",
+                    })
+                    continue
+
+                # Require a successful file_verify_request against the current
+                # file_version before allowing ready. Without this gate a client
+                # can skip verification and just declare themselves ready.
+                if state is None or user_id not in state.verified_users:
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "error",
+                        "code": "not_verified",
+                        "message": "Verify your file before marking ready.",
                     })
                     continue
 
@@ -315,6 +441,16 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     "is_ready": True,
                     "file_version": current_version,
                 })
+
+                # Send current playback position so late joiners / re-readys sync up.
+                # Without this, newcomers start at 0s while everyone else is mid-playback.
+                if state:
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "sync_state",
+                        "is_playing": state.is_playing,
+                        "current_time_ms": get_current_time_ms(state),
+                        "file_version": state.file_version,
+                    })
 
             elif msg_type == "not_ready":
                 async with async_session() as db:
@@ -341,6 +477,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     await manager.send_to_user(room_id, user_id, {
                         "type": "error", "code": "not_host", "message": "Only the host can control playback.",
                     })
+                    continue
+                if not _control_limiter.check(f"ctrl:{user_id}"):
                     continue
                 state = manager.room_states.get(room_id)
                 if not state:
@@ -407,7 +545,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     except WebSocketDisconnect:
         pass
     except Exception:
-        pass
+        logger.exception(
+            "ws handler error (room=%s user=%s)", room_id, user_id
+        )
     finally:
         # Check if user was ready before disconnect (for reconnect restore)
         was_ready = False

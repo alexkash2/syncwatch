@@ -7,8 +7,13 @@ services:
       POSTGRES_DB: syncwatch
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # Bind to the loopback interface only so the DB is reachable from the host
+    # (psql debugging, DB clients) but never from the LAN. The default password
+    # is weak; exposing 0.0.0.0:5432 would make this a trivial takeover.
+    # For production, remove this mapping entirely — only the backend container
+    # on the Compose network needs to talk to Postgres.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U syncwatch"]
       interval: 5s
@@ -20,21 +25,39 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://syncwatch:${DB_PASSWORD:-syncwatch}@postgres:5432/syncwatch
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      CORS_ORIGINS: http://localhost:3000,http://localhost
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost,http://127.0.0.1:3000,http://127.0.0.1}
+    # Loopback only: nginx on the Compose network is the public ingress,
+    # the backend port on the host is for local debugging only. Exposing
+    # 0.0.0.0:8000 would let clients bypass nginx's security headers, CSP,
+    # and the X-Forwarded-For-based rate limiter.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+    # --proxy-headers + --forwarded-allow-ips so Starlette's request.client.host
+    # reflects the real client IP (from X-Forwarded-For set by nginx). Without
+    # this, every request comes from the nginx container's IP and our rate
+    # limiter collapses all users into one bucket.
     command: >
-      sh -c "PYTHONPATH=/app alembic upgrade head && PYTHONPATH=/app uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "PYTHONPATH=/app alembic upgrade head && PYTHONPATH=/app uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # Give uvicorn time to finish in-flight WS shutdowns on stop.
+    stop_grace_period: 15s
 
   frontend:
     build: ./frontend
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   pgdata:

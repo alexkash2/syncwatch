@@ -12,7 +12,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     WS_TICKET_EXPIRE_SECONDS: int = 30
-    CORS_ORIGINS: str = "http://localhost:3000"
+    CORS_ORIGINS: str = (
+        "http://localhost:3000,http://localhost,"
+        "http://127.0.0.1:3000,http://127.0.0.1"
+    )
     ALGORITHM: str = "HS256"
     ENVIRONMENT: str = "development"
 

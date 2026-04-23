@@ -19,7 +19,7 @@ class Room(Base):
         String(8), unique=True, nullable=False, index=True
     )
     host_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     max_participants: Mapped[int] = mapped_column(Integer, default=10)

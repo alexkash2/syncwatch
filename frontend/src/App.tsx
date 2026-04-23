@@ -1,16 +1,16 @@
 import { BrowserRouter, Route, Routes } from 'react-router';
-import { AuthProvider } from './contexts/AuthContext';
+import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
-import { LoginPage } from './pages/LoginPage';
-import { RegisterPage } from './pages/RegisterPage';
 import { HomePage } from './pages/HomePage';
-import { RoomPage } from './pages/RoomPage';
+import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { RegisterPage } from './pages/RegisterPage';
+import { RoomPage } from './pages/RoomPage';
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
+    <ErrorBoundary>
+      <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
@@ -32,7 +32,7 @@ export default function App() {
           />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
