@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../hooks/useAuth';
 import { usePreferences } from '../../hooks/usePreferences';
@@ -15,11 +15,21 @@ export function Header() {
   const { user, logout, openAuthModal, isAuthenticated } = useAuth();
   const { openPreferences, preferences } = usePreferences();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [headerOffset, setHeaderOffset] = useState(0);
   const headerRef = useRef<HTMLElement | null>(null);
+  const headerOffsetRef = useRef(0);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const lastScrollYRef = useRef(0);
   const maxHeaderOffsetRef = useRef(112);
+
+  const applyHeaderOffset = useCallback((nextOffset: number) => {
+    headerOffsetRef.current = nextOffset;
+
+    if (!headerRef.current) {
+      return;
+    }
+
+    headerRef.current.style.transform = `translateY(-${nextOffset}px)`;
+  }, []);
 
   useEffect(() => {
     if (!userMenuOpen) {
@@ -55,6 +65,7 @@ export function Header() {
 
       const nextHeight = headerRef.current.getBoundingClientRect().height;
       maxHeaderOffsetRef.current = Math.max(Math.round(nextHeight + 12), 88);
+      applyHeaderOffset(Math.min(headerOffsetRef.current, maxHeaderOffsetRef.current));
     };
 
     updateHeaderBounds();
@@ -63,11 +74,12 @@ export function Header() {
     return () => {
       window.removeEventListener('resize', updateHeaderBounds);
     };
-  }, []);
+  }, [applyHeaderOffset]);
 
   useEffect(() => {
     if (preferences.reduceMotion) {
-      setHeaderOffset(0);
+      lastScrollYRef.current = window.scrollY;
+      applyHeaderOffset(0);
       return;
     }
 
@@ -78,7 +90,7 @@ export function Header() {
       const delta = currentScrollY - lastScrollYRef.current;
 
       if (currentScrollY <= 8) {
-        setHeaderOffset(0);
+        applyHeaderOffset(0);
         lastScrollYRef.current = currentScrollY;
         return;
       }
@@ -91,13 +103,12 @@ export function Header() {
         setUserMenuOpen(false);
       }
 
-      setHeaderOffset((current) => {
-        const motion = delta > 0 ? delta * 0.22 : delta * 0.34;
-        return Math.min(
-          Math.max(current + motion, 0),
-          maxHeaderOffsetRef.current
-        );
-      });
+      const motion = delta > 0 ? delta * 0.22 : delta * 0.34;
+      const nextOffset = Math.min(
+        Math.max(headerOffsetRef.current + motion, 0),
+        maxHeaderOffsetRef.current
+      );
+      applyHeaderOffset(nextOffset);
 
       lastScrollYRef.current = currentScrollY;
     };
@@ -107,15 +118,12 @@ export function Header() {
     return () => {
       window.removeEventListener('scroll', handleScroll);
     };
-  }, [preferences.reduceMotion]);
+  }, [applyHeaderOffset, preferences.reduceMotion]);
 
   return (
     <header
       ref={headerRef}
       className="fixed inset-x-0 top-0 z-50 px-4 pt-4 transition-transform duration-100 ease-out will-change-transform md:px-8 xl:px-10"
-      style={{
-        transform: `translateY(-${headerOffset}px)`,
-      }}
     >
       <div className="mx-auto flex w-full max-w-[92rem] items-center justify-between rounded-[1.6rem] border border-outline-variant/15 bg-black/38 px-4 py-3 shadow-[0_24px_60px_rgba(0,0,0,0.32)] backdrop-blur-2xl md:px-6">
         <div className="flex min-w-0 items-center gap-3 md:gap-5">
