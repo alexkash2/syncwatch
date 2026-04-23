@@ -1,7 +1,8 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import { Button } from './Button';
 import { Panel } from './Panel';
-import { LayoutPanelIcon, KeyboardIcon, SettingsSlidersIcon, XIcon } from './icons';
+import { SettingsSlidersIcon, XIcon } from './icons';
+import { PreferenceToggleCard } from './PreferenceToggleCard';
 import type { AppPreferences } from '../../types/preferences';
 
 interface SettingsDialogProps {
@@ -87,7 +88,7 @@ export function SettingsDialog({
         aria-labelledby="settings-dialog-title"
         aria-describedby="settings-dialog-description"
         tabIndex={-1}
-        className="ui-dialog-enter relative w-full max-w-3xl rounded-[2rem]"
+        className="ui-dialog-enter relative w-full max-w-2xl rounded-[2rem]"
       >
         <button
           ref={closeButtonRef}
@@ -107,59 +108,39 @@ export function SettingsDialog({
             id="settings-dialog-title"
             className="mt-3 text-3xl font-black tracking-tight text-on-surface"
           >
-            Tune the room experience
+            Tune the app experience
           </h2>
           <p
             id="settings-dialog-description"
             className="mt-4 text-sm leading-7 text-on-surface-variant"
           >
             These settings stay on this device and shape how SyncWatch feels for you
-            without changing the shared room state for everyone else.
+            without changing the shared room state for anyone else.
           </p>
         </div>
 
-        <div className="mt-8 grid gap-6 xl:grid-cols-2">
+        <div className="mt-8">
           <PreferenceSection
             title="Viewing Comfort"
             description="Shape motion, guidance and helper cues around playback."
           >
-            <PreferenceToggle
+            <PreferenceToggleCard
               label="Reduce motion"
               description="Tone down transitions and animated flourishes across the app."
               checked={preferences.reduceMotion}
               onChange={() => onTogglePreference('reduceMotion')}
             />
-            <PreferenceToggle
+            <PreferenceToggleCard
               label="Show keyboard hints"
               description="Keep shortcut chips visible around playback controls on desktop."
               checked={preferences.showHotkeys}
               onChange={() => onTogglePreference('showHotkeys')}
             />
-            <PreferenceToggle
+            <PreferenceToggleCard
               label="Show room guidance"
               description="Display the onboarding steps that explain file matching and synced playback."
               checked={preferences.showRoomOnboarding}
               onChange={() => onTogglePreference('showRoomOnboarding')}
-            />
-          </PreferenceSection>
-
-          <PreferenceSection
-            title="Room Behavior"
-            description="Adjust how dense the room UI feels and how exits are handled."
-          >
-            <PreferenceToggle
-              label="Compact sidebar"
-              description="Use a denser participant/chat panel to give the player more breathing room."
-              checked={preferences.compactSidebar}
-              onChange={() => onTogglePreference('compactSidebar')}
-              icon={<LayoutPanelIcon size={16} />}
-            />
-            <PreferenceToggle
-              label="Confirm viewer exit"
-              description="Ask for confirmation before leaving a room even when you are not the host."
-              checked={preferences.confirmViewerLeave}
-              onChange={() => onTogglePreference('confirmViewerLeave')}
-              icon={<KeyboardIcon size={16} />}
             />
           </PreferenceSection>
         </div>
@@ -202,48 +183,5 @@ function PreferenceSection({
       <p className="mt-3 text-sm leading-7 text-on-surface-variant">{description}</p>
       <div className="mt-5 space-y-3">{children}</div>
     </Panel>
-  );
-}
-
-function PreferenceToggle({
-  label,
-  description,
-  checked,
-  onChange,
-  icon,
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: () => void;
-  icon?: ReactNode;
-}) {
-  return (
-    <label className="flex cursor-pointer items-start justify-between gap-4 rounded-[1.35rem] border border-outline-variant/14 bg-surface-container-lowest/72 px-4 py-4 transition hover:border-primary-container/24 hover:bg-surface-container-low">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          {icon && (
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-primary-container/18 bg-primary-container/10 text-primary">
-              {icon}
-            </span>
-          )}
-          <p className="text-sm font-semibold text-on-surface">{label}</p>
-        </div>
-        <p className="mt-2 text-xs leading-6 text-on-surface-variant">{description}</p>
-      </div>
-
-      <span className="relative mt-1 inline-flex shrink-0">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={onChange}
-          className="peer sr-only"
-          aria-label={label}
-        />
-        <span className="flex h-7 w-12 items-center rounded-full border border-outline-variant/18 bg-black/24 px-1 transition peer-checked:border-primary-container/28 peer-checked:bg-primary-container/20">
-          <span className="h-5 w-5 rounded-full bg-on-surface-variant transition peer-checked:translate-x-5 peer-checked:bg-primary" />
-        </span>
-      </span>
-    </label>
   );
 }

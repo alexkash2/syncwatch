@@ -143,7 +143,7 @@ export function RoomPage() {
           : 'room_connection_failed'
       );
 
-      navigate('/', { state: { arrivalNotice } });
+      navigate('/create', { state: { arrivalNotice } });
     },
   });
   const connectionState = isConnected
@@ -357,7 +357,7 @@ export function RoomPage() {
           : 'You can rejoin later from the dashboard.',
       });
     } finally {
-      navigate('/');
+      navigate('/create');
     }
   }, [
     confirm,
@@ -491,7 +491,7 @@ export function RoomPage() {
           tone="warning"
           className="relative z-10 w-full max-w-md"
           actions={
-            <Button variant="primary" size="md" onClick={() => navigate('/')}>
+            <Button variant="primary" size="md" onClick={() => navigate('/create')}>
               Back to dashboard
             </Button>
           }

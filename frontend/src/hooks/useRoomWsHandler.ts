@@ -207,7 +207,7 @@ export function useRoomWsHandler({
 
         case 'room_closed':
           clearGraceTimer();
-          navigate('/', {
+          navigate('/create', {
             state: {
               arrivalNotice: getHomeArrivalNotice(
                 msg.reason === 'host_left'
@@ -235,13 +235,15 @@ export function useRoomWsHandler({
 
         case 'error':
           if (msg.code === 'tab_replaced') {
-            navigate('/', {
+            navigate('/create', {
               state: {
                 arrivalNotice: getHomeArrivalNotice('tab_replaced'),
               },
             });
           } else if (msg.code === 'room_gone') {
-            navigate('/', { state: { arrivalNotice: getHomeArrivalNotice('room_not_found') } });
+            navigate('/create', {
+              state: { arrivalNotice: getHomeArrivalNotice('room_not_found') },
+            });
           } else if (msg.code === 'rate_limited') {
             pushToast({
               tone: 'warning',

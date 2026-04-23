@@ -108,6 +108,20 @@ export function ArrowUpRightIcon(props: IconProps) {
   );
 }
 
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path
+        d="m7.75 10.25 4.25 4.25 4.25-4.25"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </BaseIcon>
+  );
+}
+
 export function LayoutPanelIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
