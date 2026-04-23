@@ -29,16 +29,17 @@ export function RoomPage() {
   const fileVersionRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSeqRef = useRef(0);
-  const graceTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const graceTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // Fetch room details + chat history via REST
   useEffect(() => {
     if (!roomId) return;
+    const activeRoomId = roomId;
     let cancelled = false;
 
     async function load() {
       try {
-        const data = await getRoom(roomId);
+        const data = await getRoom(activeRoomId);
         if (cancelled) return;
         setRoom(data);
         setParticipants(
@@ -50,7 +51,7 @@ export function RoomPage() {
         );
         // Chat history is optional — don't fail the whole page
         try {
-          const history = await getChatHistory(roomId);
+          const history = await getChatHistory(activeRoomId);
           if (!cancelled) setMessages(history.messages);
         } catch {
           // Chat history failed, non-critical
@@ -289,7 +290,7 @@ export function RoomPage() {
   if (!room) return null;
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-surface">
+    <div className="min-h-screen w-full flex flex-col overflow-x-hidden overflow-y-auto bg-surface">
       {/* Top bar */}
       <header className="bg-surface/80 backdrop-blur-xl flex justify-between items-center px-4 md:px-12 h-14 md:h-16 shadow-[0px_24px_48px_rgba(0,0,0,0.4),0px_0px_12px_rgba(0,98,255,0.1)] z-50 shrink-0">
         <div className="flex items-center gap-2 md:gap-4 min-w-0">
@@ -330,7 +331,7 @@ export function RoomPage() {
         </div>
       </header>
 
-      <main className="flex flex-1 overflow-hidden relative">
+      <main className="flex flex-1 relative">
         {/* Video area */}
         <section className="flex-1 md:flex-[3] flex flex-col relative">
           {/* Host disconnect overlay */}

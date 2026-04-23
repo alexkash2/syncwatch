@@ -13,12 +13,12 @@ export function useWebSocket({ roomId, onMessage, lastSeqRef, fileVersionRef }: 
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectAttempt = useRef(0);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onMessageRef = useRef(onMessage);
   const intentionalClose = useRef(false);
   const hasConnectedBefore = useRef(false);
   const mountIdRef = useRef(0);
-  const connectRef = useRef<() => Promise<void>>();
+  const connectRef = useRef<(() => Promise<void>) | undefined>(undefined);
   onMessageRef.current = onMessage;
 
   // Store connect in a ref to allow self-referencing in onclose without lint issues

@@ -8,7 +8,7 @@ interface UseVideoSyncOptions {
 }
 
 export function useVideoSync({ videoRef, send, fileVersion }: UseVideoSyncOptions) {
-  const nudgeTimer = useRef<ReturnType<typeof setTimeout>>();
+  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const handleSyncMessage = useCallback(
     (msg: WsMessage) => {
