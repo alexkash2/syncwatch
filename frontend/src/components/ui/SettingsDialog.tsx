@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Button } from './Button';
 import { Panel } from './Panel';
-import { SettingsSlidersIcon, XIcon } from './icons';
+import { KeyboardIcon, LayoutPanelIcon, SettingsSlidersIcon, XIcon } from './icons';
 import { PreferenceToggleCard } from './PreferenceToggleCard';
 import type { AppPreferences } from '../../types/preferences';
 
@@ -88,7 +88,7 @@ export function SettingsDialog({
         aria-labelledby="settings-dialog-title"
         aria-describedby="settings-dialog-description"
         tabIndex={-1}
-        className="ui-dialog-enter relative w-full max-w-2xl rounded-[2rem]"
+        className="ui-dialog-enter relative w-full max-w-3xl rounded-[2rem]"
       >
         <button
           ref={closeButtonRef}
@@ -119,7 +119,7 @@ export function SettingsDialog({
           </p>
         </div>
 
-        <div className="mt-8">
+        <div className="mt-8 grid gap-6 xl:grid-cols-2">
           <PreferenceSection
             title="Viewing Comfort"
             description="Shape motion, guidance and helper cues around playback."
@@ -141,6 +141,26 @@ export function SettingsDialog({
               description="Display the onboarding steps that explain file matching and synced playback."
               checked={preferences.showRoomOnboarding}
               onChange={() => onTogglePreference('showRoomOnboarding')}
+            />
+          </PreferenceSection>
+
+          <PreferenceSection
+            title="Room Behavior"
+            description="Adjust how dense the room UI feels and how exits are handled."
+          >
+            <PreferenceToggleCard
+              label="Compact sidebar"
+              description="Use a denser participant/chat panel to give the player more breathing room."
+              checked={preferences.compactSidebar}
+              onChange={() => onTogglePreference('compactSidebar')}
+              icon={<LayoutPanelIcon size={16} />}
+            />
+            <PreferenceToggleCard
+              label="Confirm viewer exit"
+              description="Ask for confirmation before leaving a room even when you are not the host."
+              checked={preferences.confirmViewerLeave}
+              onChange={() => onTogglePreference('confirmViewerLeave')}
+              icon={<KeyboardIcon size={16} />}
             />
           </PreferenceSection>
         </div>

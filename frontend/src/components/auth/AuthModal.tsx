@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { register } from '../../api/auth';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../ui/Button';
@@ -40,9 +40,31 @@ export function AuthModal() {
     }
   }, [authModalOpen, closeAuthModal, isAuthenticated]);
 
+  useEffect(() => {
+    if (!authModalOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeAuthModal();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [authModalOpen, closeAuthModal]);
+
   if (!authModalOpen) {
     return null;
   }
+
+  const handleBackdropClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      closeAuthModal();
+    }
+  };
 
   const handleLogin = async (event: FormEvent) => {
     event.preventDefault();
@@ -86,6 +108,7 @@ export function AuthModal() {
       await register({ username, email, password });
       setMode('login');
       setNotice('Account created. Log in to continue.');
+      setUsername('');
       setPassword('');
       setConfirmPassword('');
     } catch (err: unknown) {
@@ -110,6 +133,7 @@ export function AuthModal() {
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
+      onClick={handleBackdropClick}
     >
       <div className="ui-dialog-enter w-full max-w-[34rem]">
         <Panel variant="glass" padding="lg" className="relative rounded-[2rem]">
@@ -117,7 +141,7 @@ export function AuthModal() {
             type="button"
             onClick={closeAuthModal}
             className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-outline-variant/20 bg-surface-container-lowest/70 text-on-surface-variant transition hover:text-on-surface"
-            aria-label="Close login dialog"
+            aria-label={mode === 'login' ? 'Close sign-in dialog' : 'Close registration dialog'}
           >
             <XIcon size={18} />
           </button>

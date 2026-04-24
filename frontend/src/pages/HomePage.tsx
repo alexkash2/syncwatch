@@ -11,19 +11,24 @@ import {
 } from '../components/ui/icons';
 import { Panel } from '../components/ui/Panel';
 import { useAuth } from '../hooks/useAuth';
+import type { HomeFocusSection, HomeLocationState } from '../types/navigation';
 
 export function HomePage() {
   const navigate = useNavigate();
   const { isAuthenticated, openAuthModal } = useAuth();
 
-  const goToCreate = () => {
+  const goToDashboard = (focusSection?: HomeFocusSection, authPrompt?: string) => {
     if (isAuthenticated) {
-      navigate('/create');
+      const state: HomeLocationState | undefined = focusSection ? { focusSection } : undefined;
+      navigate('/create', state ? { state } : undefined);
       return;
     }
 
-    openAuthModal('Sign in to create or join a room.');
+    openAuthModal(authPrompt ?? 'Sign in to create or join a room.');
   };
+
+  const handleCreate = () => goToDashboard('create-room', 'Sign in to create a room.');
+  const handleJoin = () => goToDashboard('join-room', 'Sign in to join a room with a code.');
 
   return (
     <Layout>
@@ -50,7 +55,7 @@ export function HomePage() {
               <Button
                 variant="primary"
                 size="lg"
-                onClick={goToCreate}
+                onClick={handleCreate}
                 className="w-full sm:w-auto"
               >
                 Create a room
@@ -58,7 +63,7 @@ export function HomePage() {
               <Button
                 variant="ghost"
                 size="lg"
-                onClick={goToCreate}
+                onClick={handleJoin}
                 className="w-full sm:w-auto"
               >
                 Join with code

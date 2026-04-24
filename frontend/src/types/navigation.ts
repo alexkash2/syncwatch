@@ -19,9 +19,12 @@ export interface HomeArrivalNotice {
   tone: StateTone;
 }
 
+export type HomeFocusSection = 'create-room' | 'join-room' | 'recent-rooms';
+
 export interface HomeLocationState {
   arrivalNotice?: HomeArrivalNotice;
   flash?: string;
+  focusSection?: HomeFocusSection;
 }
 
 export function getHomeArrivalNotice(key: HomeArrivalNoticeKey): HomeArrivalNotice {

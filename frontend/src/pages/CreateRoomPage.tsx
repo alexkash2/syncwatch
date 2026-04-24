@@ -55,7 +55,7 @@ export function CreateRoomPage() {
 
   useEffect(() => {
     const routeState = (location.state as HomeLocationState | null) ?? null;
-    if (!routeState?.arrivalNotice && !routeState?.flash) {
+    if (!routeState?.arrivalNotice && !routeState?.flash && !routeState?.focusSection) {
       return;
     }
 
@@ -67,6 +67,16 @@ export function CreateRoomPage() {
         title: 'Room update',
         description: routeState.flash,
         durationMs: 4200,
+      });
+    }
+
+    if (routeState.focusSection) {
+      const targetId = routeState.focusSection;
+      window.requestAnimationFrame(() => {
+        document.getElementById(targetId)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
       });
     }
 
