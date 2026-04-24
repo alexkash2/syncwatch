@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router';
 import { AuthModal } from './components/auth/AuthModal';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
+import type { AuthModalMode } from './contexts/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import { CreateRoomPage } from './pages/CreateRoomPage';
 import { HomePage } from './pages/HomePage';
@@ -14,10 +15,18 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<AuthPromptPage message="Sign in to continue." />} />
+          <Route
+            path="/login"
+            element={<AuthPromptPage message="Sign in to continue." mode="login" />}
+          />
           <Route
             path="/register"
-            element={<AuthPromptPage message="Create an account or sign in to continue." />}
+            element={
+              <AuthPromptPage
+                message="Create an account or sign in to continue."
+                mode="register"
+              />
+            }
           />
           <Route
             path="/"
@@ -47,12 +56,12 @@ export default function App() {
   );
 }
 
-function AuthPromptPage({ message }: { message: string }) {
+function AuthPromptPage({ message, mode }: { message: string; mode: AuthModalMode }) {
   const { openAuthModal } = useAuth();
 
   useEffect(() => {
-    openAuthModal(message);
-  }, [message, openAuthModal]);
+    openAuthModal(message, mode);
+  }, [message, mode, openAuthModal]);
 
   return <HomePage />;
 }

@@ -6,12 +6,18 @@ import { Field } from '../ui/Field';
 import { Input } from '../ui/Input';
 import { XIcon } from '../ui/icons';
 import { Panel } from '../ui/Panel';
-
-type AuthMode = 'login' | 'register';
+import type { AuthModalMode as AuthMode } from '../../contexts/AuthContext';
 
 export function AuthModal() {
-  const { authModalOpen, authModalMessage, closeAuthModal, login, isAuthenticated } = useAuth();
-  const [mode, setMode] = useState<AuthMode>('login');
+  const {
+    authModalOpen,
+    authModalMessage,
+    authModalMode,
+    closeAuthModal,
+    login,
+    isAuthenticated,
+  } = useAuth();
+  const [mode, setMode] = useState<AuthMode>(authModalMode);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,10 +28,11 @@ export function AuthModal() {
 
   useEffect(() => {
     if (authModalOpen) {
+      setMode(authModalMode);
       setError('');
       setNotice('');
     }
-  }, [authModalOpen]);
+  }, [authModalOpen, authModalMode]);
 
   useEffect(() => {
     if (isAuthenticated && authModalOpen) {
