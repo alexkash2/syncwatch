@@ -1,10 +1,13 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router';
+import { AuthModal } from './components/auth/AuthModal';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
+import type { AuthModalMode } from './contexts/AuthContext';
+import { useAuth } from './hooks/useAuth';
+import { CreateRoomPage } from './pages/CreateRoomPage';
 import { HomePage } from './pages/HomePage';
-import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
-import { RegisterPage } from './pages/RegisterPage';
 import { RoomPage } from './pages/RoomPage';
 
 export default function App() {
@@ -12,13 +15,28 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+          <Route
+            path="/login"
+            element={<AuthPromptPage message="Sign in to continue." mode="login" />}
+          />
+          <Route
+            path="/register"
+            element={
+              <AuthPromptPage
+                message="Create an account or sign in to continue."
+                mode="register"
+              />
+            }
+          />
           <Route
             path="/"
+            element={<HomePage />}
+          />
+          <Route
+            path="/create"
             element={
               <ProtectedRoute>
-                <HomePage />
+                <CreateRoomPage />
               </ProtectedRoute>
             }
           />
@@ -32,7 +50,18 @@ export default function App() {
           />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
+        <AuthModal />
       </BrowserRouter>
     </ErrorBoundary>
   );
+}
+
+function AuthPromptPage({ message, mode }: { message: string; mode: AuthModalMode }) {
+  const { openAuthModal } = useAuth();
+
+  useEffect(() => {
+    openAuthModal(message, mode);
+  }, [message, mode, openAuthModal]);
+
+  return <HomePage />;
 }

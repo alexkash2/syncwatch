@@ -143,7 +143,7 @@ export function RoomPage() {
           : 'room_connection_failed'
       );
 
-      navigate('/', { state: { arrivalNotice } });
+      navigate('/create', { state: { arrivalNotice } });
     },
   });
   const connectionState = isConnected
@@ -357,7 +357,7 @@ export function RoomPage() {
           : 'You can rejoin later from the dashboard.',
       });
     } finally {
-      navigate('/');
+      navigate('/create');
     }
   }, [
     confirm,
@@ -491,7 +491,7 @@ export function RoomPage() {
           tone="warning"
           className="relative z-10 w-full max-w-md"
           actions={
-            <Button variant="primary" size="md" onClick={() => navigate('/')}>
+            <Button variant="primary" size="md" onClick={() => navigate('/create')}>
               Back to dashboard
             </Button>
           }
@@ -501,13 +501,13 @@ export function RoomPage() {
   }
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-surface text-on-surface">
+    <div className="relative min-h-screen w-full overflow-x-hidden overflow-y-auto bg-surface text-on-surface">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(180,197,255,0.14),transparent_24%),linear-gradient(180deg,#090909_0%,#111111_45%,#151515_100%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:36px_36px] opacity-25" />
       </div>
 
-      <div className="relative z-10 flex h-full flex-col">
+      <div className="relative z-10 flex min-h-screen flex-col">
         <RoomHeader
           roomName={room.name}
           roomCode={room.room_code}
@@ -521,8 +521,8 @@ export function RoomPage() {
           onToggleSidebar={() => setSidebarOpen((current) => !current)}
         />
 
-        <main className="flex min-h-0 flex-1 overflow-hidden px-3 pb-3 md:px-4 md:pb-4">
-          <div className="flex min-h-0 flex-1 gap-3 md:gap-4">
+        <main className="flex flex-1 px-3 pb-3 md:px-4 md:pb-4">
+          <div className="flex flex-1 items-stretch gap-3 md:gap-4">
             <VideoArea
               roomStatus={roomStatus}
               fileUrl={fileUrl}

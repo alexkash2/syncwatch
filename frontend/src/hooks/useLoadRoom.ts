@@ -55,7 +55,7 @@ export function useLoadRoom({
               : 'room_load_failed'
           );
 
-          navigate('/', { state: { arrivalNotice } });
+          navigate('/create', { state: { arrivalNotice } });
         }
         return;
       } finally {

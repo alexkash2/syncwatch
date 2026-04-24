@@ -3,12 +3,19 @@ import { login as apiLogin, getMe } from '../api/auth';
 import { AUTH_LOGOUT_EVENT, clearAuthStorage, storeAuthTokens } from '../api/client';
 import type { LoginRequest, User } from '../types/auth';
 
+export type AuthModalMode = 'login' | 'register';
+
 interface AuthState {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  authModalOpen: boolean;
+  authModalMessage: string | null;
+  authModalMode: AuthModalMode;
   login: (data: LoginRequest) => Promise<void>;
   logout: () => void;
+  openAuthModal: (message?: string, mode?: AuthModalMode) => void;
+  closeAuthModal: () => void;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -16,13 +23,21 @@ export const AuthContext = createContext<AuthState>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
+  authModalOpen: false,
+  authModalMessage: null,
+  authModalMode: 'login',
   login: async () => {},
   logout: () => {},
+  openAuthModal: () => {},
+  closeAuthModal: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(() => Boolean(localStorage.getItem('access_token')));
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMessage, setAuthModalMessage] = useState<string | null>(null);
+  const [authModalMode, setAuthModalMode] = useState<AuthModalMode>('login');
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -53,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     storeAuthTokens(tokens);
     const me = await getMe();
     setUser(me);
+    setAuthModalOpen(false);
+    setAuthModalMessage(null);
   }, []);
 
   const logout = useCallback(() => {
@@ -60,9 +77,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const openAuthModal = useCallback((message?: string, mode: AuthModalMode = 'login') => {
+    setAuthModalMessage(message ?? null);
+    setAuthModalMode(mode);
+    setAuthModalOpen(true);
+  }, []);
+
+  const closeAuthModal = useCallback(() => {
+    setAuthModalOpen(false);
+    setAuthModalMessage(null);
+  }, []);
+
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isAuthenticated: Boolean(user), login, logout }}
+      value={{
+        user,
+        isLoading,
+        isAuthenticated: Boolean(user),
+        authModalOpen,
+        authModalMessage,
+        authModalMode,
+        login,
+        logout,
+        openAuthModal,
+        closeAuthModal,
+      }}
     >
       {children}
     </AuthContext.Provider>
