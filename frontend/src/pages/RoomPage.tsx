@@ -70,7 +70,8 @@ export function RoomPage() {
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'participants'>('chat');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [roomDeckOpen, setRoomDeckOpenState] = useState(false);
+  const [sidebarOpen, setSidebarOpenState] = useState(false);
   const [verifyResult, setVerifyResult] = useState<FileVerifyResult | null>(null);
   const [roomStatus, setRoomStatus] = useState<RoomStatus>('waiting_file');
   const [referenceFile, setReferenceFile] = useState<ReferenceFileState>(EMPTY_REFERENCE_FILE);
@@ -90,8 +91,29 @@ export function RoomPage() {
     null
   );
   const previousHostDisconnectedRef = useRef(false);
+  const roomDeckOpenRef = useRef(false);
+  const sidebarOpenRef = useRef(false);
+  const suppressNextVideoToggleRef = useRef(false);
 
   fileUrlRef.current = fileUrl;
+
+  const setRoomDeckOpen = useCallback((open: boolean) => {
+    roomDeckOpenRef.current = open;
+    setRoomDeckOpenState(open);
+  }, []);
+
+  const setSidebarOpen = useCallback((open: boolean) => {
+    sidebarOpenRef.current = open;
+    setSidebarOpenState(open);
+  }, []);
+
+  const toggleSidebarOpen = useCallback(() => {
+    setSidebarOpen(!sidebarOpenRef.current);
+  }, [setSidebarOpen]);
+
+  const closeSidebar = useCallback(() => {
+    setSidebarOpen(false);
+  }, [setSidebarOpen]);
 
   useEffect(() => {
     fileVersionRef.current = fileVersion;
@@ -228,7 +250,28 @@ export function RoomPage() {
     }, 2200);
   }, []);
 
+  const handleVideoPointerDown = useCallback(() => {
+    if (!roomDeckOpenRef.current && !sidebarOpenRef.current) {
+      return;
+    }
+
+    suppressNextVideoToggleRef.current = true;
+    setRoomDeckOpen(false);
+    setSidebarOpen(false);
+  }, [setRoomDeckOpen, setSidebarOpen]);
+
   const handleVideoClickToggle = useCallback(() => {
+    if (suppressNextVideoToggleRef.current) {
+      suppressNextVideoToggleRef.current = false;
+      return;
+    }
+
+    if (roomDeckOpenRef.current || sidebarOpenRef.current) {
+      setRoomDeckOpen(false);
+      setSidebarOpen(false);
+      return;
+    }
+
     if (room?.host_id !== user?.id) {
       showInteractionHint();
       return;
@@ -250,7 +293,7 @@ export function RoomPage() {
       send('pause', { current_time_ms: timeMs, file_version: fileVersion });
       setRoomStatus('paused');
     }
-  }, [fileVersion, room?.host_id, send, showInteractionHint, user?.id]);
+  }, [fileVersion, room?.host_id, send, setRoomDeckOpen, setSidebarOpen, showInteractionHint, user?.id]);
 
   const handlePlay = useCallback(
     (timeMs: number) => {
@@ -516,13 +559,14 @@ export function RoomPage() {
           roomStatus={roomStatus}
           readyParticipants={readyCount}
           totalParticipants={participants.length}
-          sidebarOpen={sidebarOpen}
+          messagesCount={messages.length}
+          drawerOpen={roomDeckOpen}
+          setDrawerOpen={setRoomDeckOpen}
           onLeave={handleLeave}
-          onToggleSidebar={() => setSidebarOpen((current) => !current)}
         />
 
-        <main className="flex flex-1 px-3 pb-3 md:px-4 md:pb-4">
-          <div className="flex flex-1 items-stretch gap-3 md:gap-4">
+        <main className="flex flex-1">
+          <div className="flex flex-1 items-stretch">
             <VideoArea
               roomStatus={roomStatus}
               fileUrl={fileUrl}
@@ -545,6 +589,7 @@ export function RoomPage() {
               onVerifyRequest={handleVerifyRequest}
               onVideoCanPlay={handleVideoCanPlay}
               onVideoError={handleVideoError}
+              onVideoPointerDown={handleVideoPointerDown}
               onVideoClickToggle={handleVideoClickToggle}
               onPlay={handlePlay}
               onPause={handlePause}
@@ -554,12 +599,11 @@ export function RoomPage() {
 
             <RoomSidebar
               roomName={room.name}
-              roomCode={room.room_code}
-              connectionState={connectionState}
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               sidebarOpen={sidebarOpen}
-              closeSidebar={() => setSidebarOpen(false)}
+              toggleSidebar={toggleSidebarOpen}
+              closeSidebar={closeSidebar}
               participants={participants}
               messages={messages}
               currentUserId={user?.id || ''}

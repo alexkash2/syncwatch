@@ -1,11 +1,8 @@
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../ui/Button';
 import {
-  BrandMarkIcon,
   CheckIcon,
   RefreshIcon,
-  UsersIcon,
-  VideoIcon,
   WarningCircleIcon,
 } from '../ui/icons';
 import { usePreferences } from '../../hooks/usePreferences';
@@ -40,6 +37,7 @@ interface VideoAreaProps {
   onNonHostControlAttempt: () => void;
   onVideoCanPlay: () => void;
   onVideoError: (errorCode: string) => void;
+  onVideoPointerDown: () => void;
   onVideoClickToggle: () => void;
   onPlay: (timeMs: number) => void;
   onPause: (timeMs: number) => void;
@@ -69,6 +67,7 @@ export function VideoArea({
   onNonHostControlAttempt,
   onVideoCanPlay,
   onVideoError,
+  onVideoPointerDown,
   onVideoClickToggle,
   onPlay,
   onPause,
@@ -78,140 +77,61 @@ export function VideoArea({
   verifyResult,
 }: VideoAreaProps) {
   const { preferences } = usePreferences();
-  const statusMeta = getRoomStatusMeta(roomStatus, isHost);
   const connectionMeta = getConnectionMeta(connectionState);
   const everyoneReady = totalParticipants > 0 && readyParticipants === totalParticipants;
-  const readinessPercent =
-    totalParticipants > 0 ? Math.round((readyParticipants / totalParticipants) * 100) : 0;
   const showCompactOnboarding =
     preferences.showRoomOnboarding && (!everyoneReady || !videoReady || roomStatus === 'waiting_ready');
-  const readinessMeta = getReadinessMeta({
-    everyoneReady,
-    isHost,
-    readyParticipants,
-    totalParticipants,
-  });
-  const roleMeta = getRoleMeta(isHost);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const controlsHideTimerRef = useRef<number | null>(null);
+
+  const clearControlsHideTimer = useCallback(() => {
+    if (controlsHideTimerRef.current !== null) {
+      window.clearTimeout(controlsHideTimerRef.current);
+      controlsHideTimerRef.current = null;
+    }
+  }, []);
+
+  const shouldKeepControlsVisible =
+    !fileUrl || autoplayBlocked || Boolean(videoError) || hostDisconnected;
+
+  const scheduleControlsHide = useCallback(() => {
+    if (shouldKeepControlsVisible) {
+      setControlsVisible(true);
+      return;
+    }
+
+    clearControlsHideTimer();
+    controlsHideTimerRef.current = window.setTimeout(() => {
+      setControlsVisible(false);
+      controlsHideTimerRef.current = null;
+    }, 1800);
+  }, [clearControlsHideTimer, shouldKeepControlsVisible]);
+
+  const revealControls = useCallback(() => {
+    setControlsVisible(true);
+    scheduleControlsHide();
+  }, [scheduleControlsHide]);
+
+  useEffect(() => {
+    clearControlsHideTimer();
+
+    if (!fileUrl) {
+      return undefined;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setControlsVisible(true);
+      scheduleControlsHide();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      clearControlsHideTimer();
+    };
+  }, [clearControlsHideTimer, fileUrl, scheduleControlsHide]);
 
   return (
-    <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-outline-variant/15 bg-black/60 shadow-[0_28px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,98,255,0.18),transparent_26%),linear-gradient(180deg,rgba(255,255,255,0.03)_0%,rgba(255,255,255,0)_40%,rgba(255,255,255,0.04)_100%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:28px_28px] opacity-20" />
-      </div>
-
-      <div className="relative z-20 border-b border-outline-variant/10 px-4 py-4 md:px-6 md:py-5">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.28fr)_minmax(18rem,0.92fr)]">
-          <div className="overflow-hidden rounded-[1.8rem] border border-outline-variant/16 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.24)] md:p-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusChip label={isHost ? 'Host Control' : 'Viewer'} tone="neutral" />
-              <StatusChip label={statusMeta.label} tone={statusMeta.tone} />
-              <StatusChip label={connectionMeta.label} tone={connectionMeta.tone} />
-            </div>
-
-            <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
-                  {isHost ? 'Host session deck' : 'Viewer sync deck'}
-                </p>
-                <h2 className="mt-2 text-2xl font-black tracking-tight text-on-surface md:text-[2rem]">
-                  {statusMeta.label}
-                </h2>
-                <p className="mt-3 max-w-2xl text-sm leading-7 text-on-surface-variant">
-                  {statusMeta.description}
-                </p>
-              </div>
-
-              <div
-                className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.25rem] border shadow-[0_18px_38px_rgba(0,0,0,0.24)] ${getToneChrome(statusMeta.tone)}`}
-              >
-                <BrandMarkIcon size={24} />
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-              <div className="rounded-[1.25rem] border border-outline-variant/14 bg-black/24 px-4 py-3 backdrop-blur-xl">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary-container/18 bg-primary-container/10 text-primary">
-                    <VideoIcon size={16} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                      Reference file
-                    </p>
-                    <p className="mt-1 truncate text-sm font-semibold text-on-surface">
-                      {referenceFileName ?? 'Waiting for the host file reference'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[1.25rem] border border-outline-variant/14 bg-black/24 px-4 py-3 backdrop-blur-xl">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                  Timeline lane
-                </p>
-                <p className="mt-2 text-sm font-semibold text-on-surface">
-                  {roleMeta.value}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <SessionMetricCard
-              eyebrow="Room readiness"
-              value={readinessMeta.value}
-              description={readinessMeta.description}
-              tone={readinessMeta.tone}
-              icon={<UsersIcon size={18} />}
-            >
-              <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-                  <span>{readinessPercent}% aligned</span>
-                  <span className="font-mono text-primary">
-                    {readyParticipants}/{totalParticipants || 0}
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-black/32">
-                  <div
-                    className={`h-full rounded-full transition-[width] duration-500 ${everyoneReady ? 'bg-emerald-300' : 'bg-primary'}`}
-                    style={{
-                      width: `${
-                        totalParticipants > 0
-                          ? Math.max(readinessPercent, readyParticipants > 0 ? 10 : 4)
-                          : 4
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
-            </SessionMetricCard>
-
-            <SessionMetricCard
-              eyebrow="Realtime link"
-              value={connectionMeta.label}
-              description={connectionMeta.helper}
-              tone={connectionMeta.tone}
-              icon={
-                connectionState === 'reconnecting' ? (
-                  <RefreshIcon size={18} className="animate-spin [animation-duration:2.6s]" />
-                ) : (
-                  <BrandMarkIcon size={18} />
-                )
-              }
-            />
-
-            <SessionMetricCard
-              eyebrow="Playback authority"
-              value={roleMeta.value}
-              description={roleMeta.description}
-              tone={roleMeta.tone}
-              icon={<BrandMarkIcon size={18} />}
-            />
-          </div>
-        </div>
-      </div>
-
+    <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-black">
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         {sessionNotice && (
           <div className="relative z-20 px-4 pt-4 md:px-6">
@@ -240,13 +160,18 @@ export function VideoArea({
               </div>
             )}
 
-            <div className="relative min-h-0 flex-1">
+            <div
+              className="relative min-h-0 flex-1"
+              onPointerMove={revealControls}
+              onPointerDown={revealControls}
+            >
               <VideoPlayer
                 ref={videoRef}
                 src={fileUrl}
                 isInteractive={isHost}
                 onCanPlay={onVideoCanPlay}
                 onError={onVideoError}
+                onPointerDown={onVideoPointerDown}
                 onClickToggle={onVideoClickToggle}
               />
 
@@ -272,30 +197,6 @@ export function VideoArea({
               )}
 
               <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex flex-col gap-3 md:inset-x-6">
-                <div className="flex flex-wrap gap-3">
-                  <FloatingPanel
-                    title={everyoneReady ? 'Synced timeline ready' : 'Readiness window'}
-                    description={
-                      everyoneReady
-                        ? isHost
-                          ? 'Everyone matched the same file. Press play whenever you want to open the first frame together.'
-                          : 'The group is aligned. The next host action will move every matched player together.'
-                        : isHost
-                        ? 'Keep the room here while others finish loading the matching file.'
-                        : 'Stay on this screen after matching the file and the room will catch up automatically.'
-                    }
-                  />
-
-                  <FloatingPanel
-                    title={isHost ? 'Host lane' : 'Viewer lane'}
-                    description={
-                      isHost
-                        ? 'Clicks on the video stage and the transport controls update the shared room timeline.'
-                        : 'Volume and fullscreen remain local to you, but playback timing follows the host.'
-                    }
-                  />
-                </div>
-
                 {connectionState !== 'connected' && (
                   <div className="inline-flex w-fit items-center gap-2 rounded-full border border-outline-variant/20 bg-black/55 px-4 py-2 text-xs text-on-surface-variant backdrop-blur-xl">
                     <span className={`h-2 w-2 rounded-full ${connectionMeta.dotClass}`} />
@@ -316,7 +217,7 @@ export function VideoArea({
               )}
 
               {!videoReady && !videoError && !hostDisconnected && (
-                <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 md:inset-x-6">
+                <div className="pointer-events-none absolute inset-x-4 bottom-28 z-20 md:inset-x-6 md:bottom-32">
                   <div className="inline-flex items-center gap-3 rounded-full border border-outline-variant/15 bg-black/55 px-4 py-2 text-xs text-on-surface-variant backdrop-blur-xl">
                     <span className="h-2 w-2 animate-pulse rounded-full bg-primary-container" />
                     Preparing the local video player...
@@ -325,23 +226,26 @@ export function VideoArea({
               )}
 
               {interactionHint && (
-                <div className="pointer-events-none absolute inset-x-4 bottom-18 z-30 flex justify-center md:inset-x-6 md:bottom-22">
+                <div className="pointer-events-none absolute inset-x-4 bottom-28 z-30 flex justify-center md:inset-x-6 md:bottom-32">
                   <div className="rounded-full border border-primary-container/20 bg-black/66 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-primary backdrop-blur-xl">
                     {interactionHint}
                   </div>
                 </div>
               )}
-            </div>
 
-            <PlaybackControls
-              videoRef={videoRef}
-              isHost={isHost}
-              onPlay={onPlay}
-              onPause={onPause}
-              onSeek={onSeek}
-              videoReady
-              onNonHostControlAttempt={onNonHostControlAttempt}
-            />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
+                <PlaybackControls
+                  videoRef={videoRef}
+                  isHost={isHost}
+                  onPlay={onPlay}
+                  onPause={onPause}
+                  onSeek={onSeek}
+                  videoReady={videoReady}
+                  visible={controlsVisible}
+                  onNonHostControlAttempt={onNonHostControlAttempt}
+                />
+              </div>
+            </div>
           </>
         ) : (
           <FileSelector
@@ -359,15 +263,6 @@ export function VideoArea({
 
       {hostDisconnected && <HostDisconnectOverlay graceCountdown={graceCountdown} />}
     </section>
-  );
-}
-
-function FloatingPanel({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="max-w-sm rounded-2xl border border-outline-variant/15 bg-black/45 px-4 py-3 backdrop-blur-xl">
-      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-on-surface-variant">{description}</p>
-    </div>
   );
 }
 
@@ -443,106 +338,6 @@ function SessionBanner({
   );
 }
 
-function StatusChip({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: 'neutral' | 'success' | 'warning' | 'accent';
-}) {
-  const classes = {
-    neutral: 'border-outline-variant/15 bg-black/35 text-on-surface-variant',
-    success: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200',
-    warning: 'border-amber-300/25 bg-amber-300/10 text-amber-100',
-    accent: 'border-primary-container/30 bg-primary-container/12 text-primary',
-  } satisfies Record<string, string>;
-
-  return (
-    <span className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${classes[tone]}`}>
-      {label}
-    </span>
-  );
-}
-
-function SessionMetricCard({
-  eyebrow,
-  value,
-  description,
-  icon,
-  tone,
-  children,
-}: {
-  eyebrow: string;
-  value: string;
-  description: string;
-  icon: ReactNode;
-  tone: 'neutral' | 'success' | 'warning' | 'accent';
-  children?: ReactNode;
-}) {
-  return (
-    <div className={`rounded-[1.5rem] border px-4 py-4 shadow-[0_18px_36px_rgba(0,0,0,0.22)] backdrop-blur-xl ${getTonePanel(tone)}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-            {eyebrow}
-          </p>
-          <p className="mt-2 text-lg font-black tracking-tight text-on-surface">{value}</p>
-        </div>
-        <span
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border ${getToneChrome(tone)}`}
-        >
-          {icon}
-        </span>
-      </div>
-      <p className="mt-3 text-xs leading-6 text-on-surface-variant">{description}</p>
-      {children}
-    </div>
-  );
-}
-
-function getRoomStatusMeta(roomStatus: RoomStatus, isHost: boolean) {
-  switch (roomStatus) {
-    case 'waiting_file':
-      return {
-        label: 'Waiting for file',
-        tone: 'warning' as const,
-        description: isHost
-          ? 'Choose the first reference file to anchor the room.'
-          : 'The host still needs to choose a reference file for everyone.',
-      };
-    case 'waiting_ready':
-      return {
-        label: 'Waiting for readiness',
-        tone: 'accent' as const,
-        description: isHost
-          ? 'Participants are matching the reference file before playback starts.'
-          : 'Match the host file locally and the room will sync once everyone is ready.',
-      };
-    case 'playing':
-      return {
-        label: 'Live playback',
-        tone: 'success' as const,
-        description: isHost
-          ? 'You are actively driving the room timeline.'
-          : 'Playback is currently following the host timeline.',
-      };
-    case 'paused':
-      return {
-        label: 'Paused',
-        tone: 'neutral' as const,
-        description: isHost
-          ? 'You can resume whenever the room is ready.'
-          : 'The host paused the session. Your local player will hold the synced frame.',
-      };
-    case 'closing':
-      return {
-        label: 'Host reconnecting',
-        tone: 'warning' as const,
-        description: 'The room is holding state while the host connection recovers.',
-      };
-  }
-}
-
 function getConnectionMeta(connectionState: 'connected' | 'connecting' | 'reconnecting') {
   switch (connectionState) {
     case 'connected':
@@ -566,88 +361,5 @@ function getConnectionMeta(connectionState: 'connected' | 'connecting' | 'reconn
         helper: 'Opening the live room channel...',
         dotClass: 'bg-on-surface-variant/60',
       };
-  }
-}
-
-function getReadinessMeta({
-  everyoneReady,
-  isHost,
-  readyParticipants,
-  totalParticipants,
-}: {
-  everyoneReady: boolean;
-  isHost: boolean;
-  readyParticipants: number;
-  totalParticipants: number;
-}) {
-  if (everyoneReady) {
-    return {
-      value: 'Everyone ready',
-      description: isHost
-        ? 'The room is aligned and ready for the shared timeline to begin.'
-        : 'The file check is complete and the room can move together on the next host action.',
-      tone: 'success' as const,
-    };
-  }
-
-  if (totalParticipants <= 1) {
-    return {
-      value: 'Waiting for the group',
-      description: isHost
-        ? 'You are ready to anchor the session. More people can join before playback starts.'
-        : 'The room is still waiting for more participants to arrive and match the file.',
-      tone: 'neutral' as const,
-    };
-  }
-
-  const remaining = Math.max(totalParticipants - readyParticipants, 0);
-  const noun = remaining === 1 ? 'participant' : 'participants';
-
-  return {
-    value: `${readyParticipants}/${totalParticipants} matched`,
-    description: isHost
-      ? `${remaining} more ${noun} need to finish loading the same file.`
-      : 'Your player is loaded. The room will start once everyone else matches the reference file.',
-    tone: 'accent' as const,
-  };
-}
-
-function getRoleMeta(isHost: boolean) {
-  return isHost
-    ? {
-        value: 'You steer playback',
-        description: 'Play, pause and seek changes from here broadcast to everyone in the room.',
-        tone: 'accent' as const,
-      }
-    : {
-        value: 'Viewer sync locked',
-        description: 'Local fullscreen and volume stay personal, while timing remains tied to the host.',
-        tone: 'neutral' as const,
-      };
-}
-
-function getTonePanel(tone: 'neutral' | 'success' | 'warning' | 'accent') {
-  switch (tone) {
-    case 'success':
-      return 'border-emerald-400/18 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(0,0,0,0.24))]';
-    case 'warning':
-      return 'border-amber-300/18 bg-[linear-gradient(135deg,rgba(251,191,36,0.12),rgba(0,0,0,0.24))]';
-    case 'accent':
-      return 'border-primary-container/20 bg-[linear-gradient(135deg,rgba(0,98,255,0.12),rgba(0,0,0,0.24))]';
-    default:
-      return 'border-outline-variant/14 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),rgba(0,0,0,0.2))]';
-  }
-}
-
-function getToneChrome(tone: 'neutral' | 'success' | 'warning' | 'accent') {
-  switch (tone) {
-    case 'success':
-      return 'border-emerald-400/18 bg-emerald-400/12 text-emerald-100';
-    case 'warning':
-      return 'border-amber-300/18 bg-amber-300/10 text-amber-100';
-    case 'accent':
-      return 'border-primary-container/20 bg-primary-container/12 text-primary';
-    default:
-      return 'border-outline-variant/16 bg-black/22 text-on-surface-variant';
   }
 }
