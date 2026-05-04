@@ -39,10 +39,12 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
         return;
       }
 
+      const fullscreenRoot = root.closest('[data-room-fullscreen-root]') ?? root;
+
       if (document.fullscreenElement) {
         void document.exitFullscreen();
       } else {
-        void root.requestFullscreen();
+        void fullscreenRoot.requestFullscreen();
       }
     };
 

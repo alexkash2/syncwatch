@@ -143,7 +143,9 @@ export function PlaybackControls({
   );
 
   const toggleFullscreen = useCallback(() => {
-    const container = videoRef.current?.closest('section');
+    const container =
+      videoRef.current?.closest('[data-room-fullscreen-root]') ??
+      videoRef.current?.closest('section');
     if (!container) {
       return;
     }

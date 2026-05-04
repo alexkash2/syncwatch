@@ -13,6 +13,7 @@ interface RoomSidebarProps {
   sidebarOpen: boolean;
   toggleSidebar: () => void;
   closeSidebar: () => void;
+  launcherVisible: boolean;
   participants: WsParticipant[];
   messages: ChatMessage[];
   currentUserId: string;
@@ -31,6 +32,7 @@ export function RoomSidebar({
   sidebarOpen,
   toggleSidebar,
   closeSidebar,
+  launcherVisible,
   participants,
   messages,
   currentUserId,
@@ -149,7 +151,13 @@ export function RoomSidebar({
       </aside>
 
       {!sidebarOpen && (
-        <div className="pointer-events-none fixed inset-x-0 top-0 z-40 pr-3 pt-3 md:pr-4 md:pt-4">
+        <div
+          className={`pointer-events-none fixed inset-x-0 top-0 z-40 pr-3 pt-3 transition-all duration-300 md:pr-4 md:pt-4 ${
+            launcherVisible
+              ? 'translate-y-0 opacity-100'
+              : 'pointer-events-none -translate-y-[calc(100%+1rem)] opacity-0'
+          }`}
+        >
           <div className="flex justify-end">
             <button
               type="button"

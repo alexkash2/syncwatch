@@ -14,6 +14,7 @@ import { VideoPlayer } from './VideoPlayer';
 import type { FileVerifyResult, RoomStatus } from '../../types/ws';
 
 interface VideoAreaProps {
+  roomId: string;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   roomStatus: RoomStatus;
   fileUrl: string | null;
@@ -22,6 +23,7 @@ interface VideoAreaProps {
   hostDisconnected: boolean;
   graceCountdown: number;
   referenceFileName: string | null;
+  referenceFileVersion: number;
   videoError: string | null;
   videoReady: boolean;
   readyParticipants: number;
@@ -39,6 +41,7 @@ interface VideoAreaProps {
   onVideoError: (errorCode: string) => void;
   onVideoPointerDown: () => void;
   onVideoClickToggle: () => void;
+  onControlsVisibilityChange: (visible: boolean) => void;
   onPlay: (timeMs: number) => void;
   onPause: (timeMs: number) => void;
   onSeek: (timeMs: number) => void;
@@ -48,6 +51,7 @@ interface VideoAreaProps {
 }
 
 export function VideoArea({
+  roomId,
   videoRef,
   roomStatus,
   fileUrl,
@@ -56,6 +60,7 @@ export function VideoArea({
   hostDisconnected,
   graceCountdown,
   referenceFileName,
+  referenceFileVersion,
   videoError,
   videoReady,
   readyParticipants,
@@ -69,6 +74,7 @@ export function VideoArea({
   onVideoError,
   onVideoPointerDown,
   onVideoClickToggle,
+  onControlsVisibilityChange,
   onPlay,
   onPause,
   onSeek,
@@ -80,7 +86,9 @@ export function VideoArea({
   const connectionMeta = getConnectionMeta(connectionState);
   const everyoneReady = totalParticipants > 0 && readyParticipants === totalParticipants;
   const showCompactOnboarding =
-    preferences.showRoomOnboarding && (!everyoneReady || !videoReady || roomStatus === 'waiting_ready');
+    isHost &&
+    preferences.showRoomOnboarding &&
+    (!everyoneReady || !videoReady || roomStatus === 'waiting_ready');
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsHideTimerRef = useRef<number | null>(null);
 
@@ -92,43 +100,51 @@ export function VideoArea({
   }, []);
 
   const shouldKeepControlsVisible =
-    !fileUrl || autoplayBlocked || Boolean(videoError) || hostDisconnected;
+    !fileUrl ||
+    autoplayBlocked ||
+    Boolean(videoError) ||
+    hostDisconnected ||
+    !videoReady ||
+    roomStatus !== 'playing';
 
   const scheduleControlsHide = useCallback(() => {
     if (shouldKeepControlsVisible) {
       setControlsVisible(true);
+      onControlsVisibilityChange(true);
       return;
     }
 
     clearControlsHideTimer();
     controlsHideTimerRef.current = window.setTimeout(() => {
       setControlsVisible(false);
+      onControlsVisibilityChange(false);
       controlsHideTimerRef.current = null;
     }, 1800);
-  }, [clearControlsHideTimer, shouldKeepControlsVisible]);
+  }, [clearControlsHideTimer, onControlsVisibilityChange, shouldKeepControlsVisible]);
 
   const revealControls = useCallback(() => {
     setControlsVisible(true);
+    onControlsVisibilityChange(true);
     scheduleControlsHide();
-  }, [scheduleControlsHide]);
+  }, [onControlsVisibilityChange, scheduleControlsHide]);
 
   useEffect(() => {
     clearControlsHideTimer();
 
-    if (!fileUrl) {
-      return undefined;
-    }
-
     const frameId = window.requestAnimationFrame(() => {
       setControlsVisible(true);
-      scheduleControlsHide();
+      onControlsVisibilityChange(true);
+
+      if (fileUrl) {
+        scheduleControlsHide();
+      }
     });
 
     return () => {
       window.cancelAnimationFrame(frameId);
       clearControlsHideTimer();
     };
-  }, [clearControlsHideTimer, fileUrl, scheduleControlsHide]);
+  }, [clearControlsHideTimer, fileUrl, onControlsVisibilityChange, scheduleControlsHide]);
 
   return (
     <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-black">
@@ -249,9 +265,11 @@ export function VideoArea({
           </>
         ) : (
           <FileSelector
+            roomId={roomId}
             isHost={isHost}
             roomStatus={roomStatus}
             referenceFileName={referenceFileName}
+            referenceFileVersion={referenceFileVersion}
             readyParticipants={readyParticipants}
             totalParticipants={totalParticipants}
             onFileVerified={onFileVerified}

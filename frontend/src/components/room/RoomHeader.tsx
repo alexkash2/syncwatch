@@ -12,7 +12,6 @@ import {
 } from '../ui/icons';
 import { usePreferences } from '../../hooks/usePreferences';
 import { useUi } from '../../hooks/useUi';
-import type { RoomStatus } from '../../types/ws';
 
 type ConnectionState = 'connected' | 'connecting' | 'reconnecting';
 
@@ -21,12 +20,12 @@ interface RoomHeaderProps {
   roomCode: string;
   connectionState: ConnectionState;
   isHost: boolean;
-  roomStatus: RoomStatus;
   readyParticipants: number;
   totalParticipants: number;
   messagesCount: number;
   drawerOpen: boolean;
   setDrawerOpen: (open: boolean) => void;
+  launcherVisible: boolean;
   onLeave: () => void;
 }
 
@@ -35,12 +34,12 @@ export function RoomHeader({
   roomCode,
   connectionState,
   isHost,
-  roomStatus,
   readyParticipants,
   totalParticipants,
   messagesCount,
   drawerOpen,
   setDrawerOpen,
+  launcherVisible,
   onLeave,
 }: RoomHeaderProps) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -90,20 +89,9 @@ export function RoomHeader({
   }, [drawerOpen, setDrawerOpen]);
 
   const connectionMeta = getConnectionMeta(connectionState);
-  const statusMeta = getRoomStatusMeta(roomStatus, isHost);
   const readinessPercent =
     totalParticipants > 0 ? Math.round((readyParticipants / totalParticipants) * 100) : 0;
   const everyoneReady = totalParticipants > 0 && readyParticipants === totalParticipants;
-  const timelineHint = everyoneReady
-    ? isHost
-      ? 'Everyone matched the same file. Press play whenever you want to open the first frame together.'
-      : 'The group is aligned. The next host action will move every matched player together.'
-    : isHost
-    ? 'Keep the room here while others finish loading the matching file.'
-    : 'Stay on this screen after matching the file and the room will catch up automatically.';
-  const laneHint = isHost
-    ? 'Clicks on the video stage and the transport controls update the shared room timeline.'
-    : 'Volume and fullscreen remain local to you, but playback timing follows the host.';
 
   const copyRoomCode = async () => {
     if (copyTimerRef.current !== null) {
@@ -181,58 +169,8 @@ export function RoomHeader({
               readinessPercent={readinessPercent}
               isHost={isHost}
               copyState={copyState}
+              onCopyRoomCode={() => void copyRoomCode()}
             />
-
-            <div className="mt-4 grid gap-3">
-              <DeckCard
-                eyebrow="Session state"
-                title={statusMeta.title}
-                description={statusMeta.description}
-                icon={<VideoIcon size={16} />}
-              />
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              <DrawerHint
-                title={everyoneReady ? 'Synced timeline ready' : 'Readiness window'}
-                description={timelineHint}
-              />
-              <DrawerHint
-                title={isHost ? 'Host lane' : 'Viewer lane'}
-                description={laneHint}
-              />
-            </div>
-
-            <div className="mt-4 rounded-[1.45rem] border border-outline-variant/14 bg-black/24 px-4 py-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={copyRoomCode}
-                  className="inline-flex items-center gap-2 rounded-full border border-outline-variant/15 bg-black/24 px-3 py-1.5 font-semibold uppercase tracking-[0.18em] text-on-surface-variant transition hover:border-primary-container/40 hover:text-primary"
-                  aria-label={`Copy room code ${roomCode}`}
-                  title="Copy room code"
-                >
-                  <span className="font-mono text-[10px] tracking-[0.24em]">{roomCode}</span>
-                  {copyState === 'copied' ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
-                </button>
-
-                <p className="min-w-0 text-[11px] leading-5 text-on-surface-variant/78">
-                  {copyState === 'copied'
-                    ? 'The room code is ready to paste anywhere.'
-                    : copyState === 'failed'
-                    ? 'Clipboard access is blocked in this browser right now.'
-                    : connectionMeta.helper}
-                </p>
-              </div>
-
-              <span className="sr-only" aria-live="polite">
-                {copyState === 'copied'
-                  ? 'Room code copied.'
-                  : copyState === 'failed'
-                  ? 'Room code could not be copied.'
-                  : ''}
-              </span>
-            </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
               <DrawerStat
@@ -267,6 +205,14 @@ export function RoomHeader({
               />
             </div>
 
+            <span className="sr-only" aria-live="polite">
+              {copyState === 'copied'
+                ? 'Room code copied.'
+                : copyState === 'failed'
+                ? 'Room code could not be copied.'
+                : ''}
+            </span>
+
             <div className="mt-4 grid gap-3">
               <Button
                 variant="ghost"
@@ -300,7 +246,13 @@ export function RoomHeader({
       </aside>
 
       {!drawerOpen && (
-        <div className="ui-fade-up flex items-start justify-between gap-3 pl-3 pt-3 md:pl-4 md:pt-4">
+        <div
+          className={`ui-fade-up flex items-start justify-between gap-3 pl-3 pt-3 transition-all duration-300 md:pl-4 md:pt-4 ${
+            launcherVisible
+              ? 'translate-y-0 opacity-100'
+              : 'pointer-events-none -translate-y-[calc(100%+1rem)] opacity-0'
+          }`}
+        >
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
@@ -327,6 +279,7 @@ function OverviewCard({
   readinessPercent,
   isHost,
   copyState,
+  onCopyRoomCode,
 }: {
   roomName: string;
   roomCode: string;
@@ -337,6 +290,7 @@ function OverviewCard({
   readinessPercent: number;
   isHost: boolean;
   copyState: 'idle' | 'copied' | 'failed';
+  onCopyRoomCode: () => void;
 }) {
   return (
     <div className="overflow-hidden rounded-[1.65rem] border border-outline-variant/14 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.22)]">
@@ -348,7 +302,16 @@ function OverviewCard({
       </div>
 
       <h3 className="truncate text-lg font-black tracking-tight text-on-surface">{roomName}</h3>
-      <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-primary">{roomCode}</p>
+      <button
+        type="button"
+        onClick={onCopyRoomCode}
+        className="mt-1 inline-flex max-w-full items-center gap-2 rounded-full text-left text-[11px] uppercase tracking-[0.18em] text-primary transition hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-container/40"
+        aria-label={`Copy room code ${roomCode}`}
+        title="Copy room code"
+      >
+        <span className="truncate">{roomCode}</span>
+        {copyState === 'copied' ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+      </button>
       <p className="mt-3 text-sm leading-6 text-on-surface-variant">
         {connectionMeta.description}
       </p>
@@ -403,35 +366,6 @@ function OverviewCard({
   );
 }
 
-function DeckCard({
-  eyebrow,
-  title,
-  description,
-  icon,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  icon: ReactNode;
-}) {
-  return (
-    <div className="rounded-[1.45rem] border border-outline-variant/14 bg-black/24 px-4 py-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
-            {eyebrow}
-          </p>
-          <p className="mt-2 text-sm font-semibold text-on-surface">{title}</p>
-          <p className="mt-2 text-xs leading-6 text-on-surface-variant">{description}</p>
-        </div>
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary-container/18 bg-primary-container/10 text-primary">
-          {icon}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function DrawerStat({
   label,
   value,
@@ -457,21 +391,6 @@ function DrawerStat({
       </div>
       <p className="mt-2 text-lg font-black tracking-tight text-on-surface">{value}</p>
       <p className="mt-2 text-xs leading-6 text-on-surface-variant">{text}</p>
-    </div>
-  );
-}
-
-function DrawerHint({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-[1.35rem] border border-outline-variant/14 bg-black/24 px-4 py-4">
-      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{title}</p>
-      <p className="mt-2 text-xs leading-6 text-on-surface-variant">{description}</p>
     </div>
   );
 }
@@ -505,55 +424,6 @@ function getConnectionMeta(connectionState: ConnectionState) {
         description: 'Opening the live room channel and preparing the shared session.',
         helper: 'Opening the live room channel and preparing the shared session.',
         dotClass: 'bg-on-surface-variant/60',
-      };
-  }
-}
-
-function getRoomStatusMeta(roomStatus: RoomStatus, isHost: boolean) {
-  switch (roomStatus) {
-    case 'waiting_file':
-      return {
-        label: 'Waiting for file',
-        tone: 'warning' as const,
-        title: 'Choose the room reference file',
-        description: isHost
-          ? 'Your file choice becomes the reference everyone else will verify against.'
-          : 'The host still needs to choose the first local file for the room.',
-      };
-    case 'waiting_ready':
-      return {
-        label: 'Waiting for readiness',
-        tone: 'primary' as const,
-        title: 'Hold while the group aligns',
-        description: isHost
-          ? 'Participants are matching the same file before you open the shared timeline.'
-          : 'Your player can stay here while the rest of the room finishes matching the file.',
-      };
-    case 'playing':
-      return {
-        label: 'Playing',
-        tone: 'success' as const,
-        title: isHost ? 'You are driving the shared timeline' : 'Playback is locked to the host',
-        description: isHost
-          ? 'Play, pause and seeks from this device control the entire room.'
-          : 'The room follows the host timeline while your local fullscreen and volume stay personal.',
-      };
-    case 'paused':
-      return {
-        label: 'Paused',
-        tone: 'neutral' as const,
-        title: isHost ? 'The room is paused and waiting' : 'The host paused the shared session',
-        description: isHost
-          ? 'You can resume playback whenever the room is ready to move again.'
-          : 'Your player is holding the synced frame until the host continues.',
-      };
-    case 'closing':
-      return {
-        label: 'Host reconnecting',
-        tone: 'warning' as const,
-        title: 'The session is holding its place',
-        description:
-          'SyncWatch is preserving the room state while the host connection recovers.',
       };
   }
 }
