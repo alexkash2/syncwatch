@@ -221,6 +221,13 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     }
     # Use canonical time (not stale state.current_time_ms) for late joiners
     canonical_time = get_current_time_ms(state) if state else 0
+
+    # Surface live host presence so a reconnecting viewer can clear the stale
+    # host-disconnected overlay if the host already came back during their own
+    # downtime — room_state is the only signal a fresh socket gets.
+    host_grace_remaining_ms = manager.grace_remaining_ms(room_id, host_id)
+    host_disconnected = host_grace_remaining_ms is not None
+
     await manager.send_to_user(room_id, user_id, {
         "type": "room_state",
         "participants": participants,
@@ -232,6 +239,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         "file_info": file_info,
         "file_version": file_info.get("file_version", 0),
         "room_status": state.room_status if state else "waiting_file",
+        "host_disconnected": host_disconnected,
+        "host_grace_remaining_ms": host_grace_remaining_ms,
     })
 
     # Broadcast user_joined
