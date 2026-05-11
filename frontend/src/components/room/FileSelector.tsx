@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { computeFileHash, getVideoDurationMs } from '../../utils/fileHash';
 import {
-  clearPersistentRoomFileHandle,
+  clearPersistedRoomFile,
   isPersistentFilePickerSupported,
   pickPersistentVideoFile,
-  restorePersistentRoomFile,
+  restoreRoomFile,
+  saveFallbackRoomFile,
   savePersistentRoomFileHandle,
   type PersistentFileSelection,
 } from '../../utils/persistentFileHandle';
@@ -60,6 +61,7 @@ export function FileSelector({
     hash: string;
     size: number;
     durationMs: number;
+    file: File;
     persistentHandle?: PersistentFileSelection['handle'];
   } | null>(null);
   const restoredFileKeyRef = useRef<string | null>(null);
@@ -96,9 +98,7 @@ export function FileSelector({
 
       if (file.type && !file.type.startsWith('video/')) {
         setStatus('not_video');
-        if (options.persistentHandle) {
-          void clearPersistentRoomFileHandle(roomId);
-        }
+        void clearPersistedRoomFile(roomId);
         if (inputRef.current) {
           inputRef.current.value = '';
         }
@@ -123,6 +123,7 @@ export function FileSelector({
           hash,
           size: file.size,
           durationMs,
+          file,
           persistentHandle: options.persistentHandle,
         };
         setStatus('verifying');
@@ -188,9 +189,13 @@ export function FileSelector({
       }
 
       if (verifyResult.match && pendingFile.current) {
-        const { persistentHandle, url } = pendingFile.current;
-        if (persistentHandle && verifyResult.file_version) {
-          void savePersistentRoomFileHandle(roomId, verifyResult.file_version, persistentHandle);
+        const { persistentHandle, url, file } = pendingFile.current;
+        if (verifyResult.file_version) {
+          if (persistentHandle) {
+            void savePersistentRoomFileHandle(roomId, verifyResult.file_version, persistentHandle);
+          } else {
+            void saveFallbackRoomFile(roomId, verifyResult.file_version, file);
+          }
         }
         setStatus('verified');
         pendingFile.current = null;
@@ -204,7 +209,7 @@ export function FileSelector({
           verifyResult.reason.toLowerCase().includes('has not selected');
 
         setStatus(waitingForHost ? 'idle' : 'mismatch');
-        void clearPersistentRoomFileHandle(roomId);
+        void clearPersistedRoomFile(roomId);
 
         if (pendingFile.current) {
           URL.revokeObjectURL(pendingFile.current.url);
@@ -232,13 +237,13 @@ export function FileSelector({
     let cancelled = false;
     restoredFileKeyRef.current = persistentFileKey;
 
-    void restorePersistentRoomFile(roomId, referenceFileVersion).then((selection) => {
-      if (cancelled || !selection) {
+    void restoreRoomFile(roomId, referenceFileVersion).then((restored) => {
+      if (cancelled || !restored) {
         return;
       }
 
-      void processSelectedFile(selection.file, {
-        persistentHandle: selection.handle,
+      void processSelectedFile(restored.file, {
+        persistentHandle: restored.handle,
       });
     });
 

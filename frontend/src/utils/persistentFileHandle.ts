@@ -23,21 +23,49 @@ interface StoredRoomFileHandle {
   handle: PersistentFileHandle;
 }
 
+interface StoredRoomFileBlob {
+  roomId: string;
+  fileVersion: number;
+  file: File;
+}
+
 export interface PersistentFileSelection {
   file: File;
   handle: PersistentFileHandle;
 }
 
-const DB_NAME = 'syncwatch-local-files';
-const STORE_NAME = 'room-file-handles';
-const DB_VERSION = 1;
+export interface RestoredRoomFile {
+  file: File;
+  handle?: PersistentFileHandle;
+}
 
-export function isPersistentFilePickerSupported() {
+const DB_NAME = 'syncwatch-local-files';
+const HANDLE_STORE = 'room-file-handles';
+const BLOB_STORE = 'room-file-blobs';
+const DB_VERSION = 2;
+
+// Hard cap for the cross-browser fallback. Cinematic 1080p rips routinely break
+// 2 GB and would either fail the structured-clone write or blow the per-origin
+// quota on Safari; keep the cached copy modest and let large files reselect.
+const MAX_FALLBACK_BLOB_BYTES = 1024 * 1024 * 1024;
+
+export function hasFileSystemAccessAPI() {
   return (
     typeof window !== 'undefined' &&
-    'indexedDB' in window &&
     typeof (window as FilePickerWindow).showOpenFilePicker === 'function'
   );
+}
+
+export function hasIndexedDB() {
+  return typeof window !== 'undefined' && 'indexedDB' in window;
+}
+
+export function isPersistentFilePickerSupported() {
+  return hasIndexedDB() && hasFileSystemAccessAPI();
+}
+
+export function isRoomFilePersistenceSupported() {
+  return hasIndexedDB();
 }
 
 export async function pickPersistentVideoFile(): Promise<PersistentFileSelection | null> {
@@ -77,42 +105,132 @@ export async function savePersistentRoomFileHandle(
     return;
   }
 
-  const database = await openDatabase();
-  await runStoreRequest(
-    database,
-    'readwrite',
-    (store) =>
-      store.put({
-        roomId,
-        fileVersion,
-        handle,
-      } satisfies StoredRoomFileHandle),
-    () => database.close()
-  );
+  try {
+    const database = await openDatabase();
+    await runStoreRequest(
+      database,
+      HANDLE_STORE,
+      'readwrite',
+      (store) =>
+        store.put({
+          roomId,
+          fileVersion,
+          handle,
+        } satisfies StoredRoomFileHandle),
+      () => database.close()
+    );
+  } catch {
+    // best effort — losing persistence is not fatal
+  }
 }
 
-export async function restorePersistentRoomFile(
+export async function saveFallbackRoomFile(
+  roomId: string,
+  fileVersion: number,
+  file: File
+) {
+  if (!roomId || fileVersion <= 0 || !isRoomFilePersistenceSupported()) {
+    return;
+  }
+  if (file.size > MAX_FALLBACK_BLOB_BYTES) {
+    return;
+  }
+
+  try {
+    const database = await openDatabase();
+    await runStoreRequest(
+      database,
+      BLOB_STORE,
+      'readwrite',
+      (store) =>
+        store.put({
+          roomId,
+          fileVersion,
+          file,
+        } satisfies StoredRoomFileBlob),
+      () => database.close()
+    );
+  } catch {
+    // Quota errors, structured-clone failures, etc. — drop silently.
+  }
+}
+
+export async function restoreRoomFile(
   roomId: string,
   fileVersion: number
-): Promise<PersistentFileSelection | null> {
-  if (!roomId || fileVersion <= 0 || !isPersistentFilePickerSupported()) {
+): Promise<RestoredRoomFile | null> {
+  if (!roomId || fileVersion <= 0 || !isRoomFilePersistenceSupported()) {
     return null;
   }
 
-  const database = await openDatabase();
-  const stored = await runStoreRequest<StoredRoomFileHandle | undefined>(
-    database,
-    'readonly',
-    (store) => store.get(roomId),
-    () => database.close()
-  );
+  const fromHandle = await restoreFromHandle(roomId, fileVersion);
+  if (fromHandle) {
+    return fromHandle;
+  }
+
+  return restoreFromBlob(roomId, fileVersion);
+}
+
+export async function clearPersistedRoomFile(roomId: string) {
+  if (!roomId || !isRoomFilePersistenceSupported()) {
+    return;
+  }
+
+  try {
+    const database = await openDatabase();
+    await runStoreRequest(
+      database,
+      HANDLE_STORE,
+      'readwrite',
+      (store) => store.delete(roomId),
+      () => undefined
+    );
+    await runStoreRequest(
+      database,
+      BLOB_STORE,
+      'readwrite',
+      (store) => store.delete(roomId),
+      () => database.close()
+    );
+  } catch {
+    // ignore
+  }
+}
+
+async function restoreFromHandle(
+  roomId: string,
+  fileVersion: number
+): Promise<RestoredRoomFile | null> {
+  if (!isPersistentFilePickerSupported()) {
+    return null;
+  }
+
+  let database: IDBDatabase;
+  try {
+    database = await openDatabase();
+  } catch {
+    return null;
+  }
+
+  let stored: StoredRoomFileHandle | undefined;
+  try {
+    stored = await runStoreRequest<StoredRoomFileHandle | undefined>(
+      database,
+      HANDLE_STORE,
+      'readonly',
+      (store) => store.get(roomId),
+      () => database.close()
+    );
+  } catch {
+    return null;
+  }
 
   if (!stored) {
     return null;
   }
 
   if (stored.fileVersion !== fileVersion) {
-    await clearPersistentRoomFileHandle(roomId);
+    await clearPersistedRoomFile(roomId);
     return null;
   }
 
@@ -127,23 +245,45 @@ export async function restorePersistentRoomFile(
       handle: stored.handle,
     };
   } catch {
-    await clearPersistentRoomFileHandle(roomId);
+    await clearPersistedRoomFile(roomId);
     return null;
   }
 }
 
-export async function clearPersistentRoomFileHandle(roomId: string) {
-  if (!roomId || !isPersistentFilePickerSupported()) {
-    return;
+async function restoreFromBlob(
+  roomId: string,
+  fileVersion: number
+): Promise<RestoredRoomFile | null> {
+  let database: IDBDatabase;
+  try {
+    database = await openDatabase();
+  } catch {
+    return null;
   }
 
-  const database = await openDatabase();
-  await runStoreRequest(
-    database,
-    'readwrite',
-    (store) => store.delete(roomId),
-    () => database.close()
-  );
+  let stored: StoredRoomFileBlob | undefined;
+  try {
+    stored = await runStoreRequest<StoredRoomFileBlob | undefined>(
+      database,
+      BLOB_STORE,
+      'readonly',
+      (store) => store.get(roomId),
+      () => database.close()
+    );
+  } catch {
+    return null;
+  }
+
+  if (!stored) {
+    return null;
+  }
+
+  if (stored.fileVersion !== fileVersion) {
+    await clearPersistedRoomFile(roomId);
+    return null;
+  }
+
+  return { file: stored.file };
 }
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -152,25 +292,30 @@ function openDatabase(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = () => {
       const database = request.result;
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        database.createObjectStore(STORE_NAME, { keyPath: 'roomId' });
+      if (!database.objectStoreNames.contains(HANDLE_STORE)) {
+        database.createObjectStore(HANDLE_STORE, { keyPath: 'roomId' });
+      }
+      if (!database.objectStoreNames.contains(BLOB_STORE)) {
+        database.createObjectStore(BLOB_STORE, { keyPath: 'roomId' });
       }
     };
 
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error('IndexedDB upgrade blocked'));
   });
 }
 
 function runStoreRequest<T>(
   database: IDBDatabase,
+  storeName: string,
   mode: IDBTransactionMode,
   createRequest: (store: IDBObjectStore) => IDBRequest<T>,
   cleanup?: () => void
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction(STORE_NAME, mode);
-    const request = createRequest(transaction.objectStore(STORE_NAME));
+    const transaction = database.transaction(storeName, mode);
+    const request = createRequest(transaction.objectStore(storeName));
 
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
