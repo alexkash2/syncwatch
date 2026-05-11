@@ -1,157 +1,167 @@
-# Идеи на обсуждение
+# Ideas to discuss
 
-Драфт-список вещей, по которым нужно принять решение, прежде чем планировать
-работу. Это не TODO — здесь нет согласованного плана. Когда решение принято,
-переносим конкретные пункты в `TODO.md` с приоритетом.
+Scratchpad for things that need a decision before they're plannable. This
+is not a TODO — there's no agreed plan here. Once a direction is picked,
+the concrete pieces move into `TODO.md` with a priority.
 
-Шкала сложности:
-- **S** — пара часов, без миграций и протокола.
-- **M** — день-два, миграции БД или новые WS-сообщения, но архитектура та же.
-- **L** — несколько дней, ломает архитектурное допущение, переписываем sync или auth.
-
----
-
-## 1. Права на playback у не-хоста (Баг #1 от тестировщика)
-
-### Контекст
-Сейчас play / pause / seek может делать только хост (см.
-`docs/ARCHITECTURE.md` → «Host-only playback control»). Сервер режет
-control-сообщения от не-хоста с `error/not_host`, на фронте кнопки
-disabled, при клике показывается hint «Only the host can control playback».
-
-Это **deliberate** — выбрано чтобы избежать N-way sync проблемы.
-Тестировщик считает это багом: «прав у подключившегося нету, паузу не
-поставить и не перемотать».
-
-### Варианты направления (нужно решить)
-
-#### Вариант A — оставить как есть, улучшить UX (S)
-Это **не баг**, а design-decision. Просто сделать UI откровеннее:
-- Внутри плеера у вьюера крупная плашка «Viewer mode — playback controlled by host».
-- На странице комнаты при первом входе показать onboarding для не-хоста,
-  объясняющий что значит «viewer».
-- Кнопки play/pause/seek для вьюера не рендерить вовсе, либо рендерить с
-  замком и подписью «host only» без попыток клика.
-
-**Сложность:** S. Только фронт, без протокола.
-
-#### Вариант B — co-host / delegated control (M)
-Хост может выдать конкретному участнику флаг «co-host», тогда сервер
-принимает play/pause/seek от него тоже. Один источник истины
-сохраняется (несколько «писателей», но не все).
-- DB: добавить `room_participants.is_cohost: bool`.
-- WS: новые сообщения `grant_control` / `revoke_control` (от хоста).
-  Серверная проверка `is_host or is_cohost` в play/pause/seek.
-- UI: у хоста рядом с участниками кнопка «Give control», у со-хоста
-  активные кнопки управления.
-- Edge cases: что если хост и со-хост одновременно жмут pause? Сейчас
-  «победит» последнее сообщение. Это приемлемо.
-
-**Сложность:** M. Миграция + новые WS-команды + UI.
-
-#### Вариант C — локальная пауза для себя (M, **не рекомендую**)
-Каждый участник может остановить **свой** плеер не трогая сервер.
-Сервер продолжает считать комнату playing, дрифт-коррекция через
-`sync_check` будет пытаться вернуть участника на канонический таймстамп
-→ виден дрифт-баннер → плохой UX.
-
-**Сложность:** M, но архитектурно сомнительно. Лучше не делать.
-
-### Открытые вопросы
-- Что тестировщик имел в виду под «нету прав»? Уточнить:
-  - даже хост не работает (тогда это другой баг — isHost determination)
-  - или участник, и это by-design
-- Если идём в B (co-host) — кто может назначать? Только хост, или
-  цепочка передачи?
+Complexity scale:
+- **S** — a few hours, no migrations or protocol changes.
+- **M** — a day or two, DB migrations or new WS messages, but the same
+  architecture.
+- **L** — several days, breaks an architectural assumption, rewrites sync
+  or auth.
 
 ---
 
-## 2. Пароли на комнаты
+## 1. Playback rights for non-host viewers (Tester's bug #1)
 
-### Контекст
-Сейчас комната = `room_code` (8 символов alnum, генерится сервером).
-Зная код, кто угодно может присоединиться. Это OK для друзей, но
-небезопасно для публичных или приватных сценариев.
+### Context
+Right now play / pause / seek can only be done by the host (see
+`docs/ARCHITECTURE.md` → "Host-only playback control"). The server
+rejects control messages from non-hosts with `error/not_host`, the
+frontend disables the buttons, and clicks surface a hint:
+"Only the host can control playback".
 
-### Базовая идея реализации
-- DB-миграция: `rooms.password_hash: text | null`. Хешируем через
-  bcrypt (там же где и пароли юзеров — переиспользуем
-  `core/security.hash_password / verify_password`).
-- При создании комнаты на фронте — опциональное поле «Room password».
-  Если пустое → `password_hash = null`, обратная совместимость.
-- При join-by-code: если у комнаты есть `password_hash`, требуем
-  поле `password` в POST `/api/rooms/join`. Сервер сравнивает через
-  `verify_password`. На неверный пароль — `401`, на пустой ввод —
-  отдельный код `password_required` чтобы фронт показал поле.
-- Rate-limit на `/join` уже есть (общий лимит) — добавить отдельный
-  per-room лимит на неуспешные попытки, чтобы пароль было не побрутить.
-- Сам пароль НИКОГДА не попадает в WS — он используется только при
-  REST-join, после которого участник уже в `room_participants` и
-  WS-ticket выдаётся как обычно.
+This is **deliberate** — chosen to avoid the N-way sync problem. The
+tester thinks it's a bug: "the joiner has no rights, can't pause or
+seek".
 
-### Сложность: M
-- 1 миграция Alembic.
-- 1 поле в форме «Create room» + ввод пароля в «Join by code».
-- Изменения в `services/rooms.py` и `api/rooms.py`.
-- Тесты: join без пароля → 401, join с верным → 200, join с
-  пустым → password_required, rate-limit.
+### Direction options (need a decision)
 
-### Открытые вопросы
-- Видно ли хосту его собственный пароль обратно? (Хранить в открытом
-  виде нельзя; либо «забыл — переустанови», либо одноразовый показ
-  при создании.)
-- Можно ли изменить/убрать пароль уже созданной комнаты? Похоже да —
-  `PATCH /api/rooms/{id}` (хост-только).
-- Передавать ли пароль через URL (`/join?code=…&password=…`)? **Нет** —
-  попадёт в логи, в browser history. Только через тело POST.
+#### Option A — keep as is, improve the UX (S)
+This is **not a bug**, it's a design decision. Just make the UI more
+explicit:
+- A clear "Viewer mode — playback controlled by host" badge inside the
+  player for non-hosts.
+- First-time room onboarding for viewers explaining what "viewer" means.
+- Don't render play/pause/seek buttons at all for viewers, or render
+  them with a lock icon and "host only" caption, without clickable
+  affordance.
 
----
+**Complexity:** S. Frontend only, no protocol changes.
 
-## 3. Хост кикает участников
+#### Option B — co-host / delegated control (M)
+The host can grant a specific participant a "co-host" flag; the server
+then accepts play/pause/seek from them too. The single-source-of-truth
+property is preserved (multiple "writers", but not everyone).
+- DB: add `room_participants.is_cohost: bool`.
+- WS: new `grant_control` / `revoke_control` messages (from host).
+  Server-side check `is_host or is_cohost` on play/pause/seek.
+- UI: a "Give control" button next to each participant for the host;
+  active control buttons for the co-host.
+- Edge cases: what if host and co-host hit pause at the same time?
+  Today "last message wins" — that's acceptable.
 
-### Контекст
-Сейчас хост никак не может убрать конкретного участника. Если кто-то
-троллит в чате или мешает — единственный способ убрать его — закрыть
-всю комнату. Это слишком грубо.
+**Complexity:** M. Migration + new WS commands + UI.
 
-### Базовая идея реализации
-- Новое WS-сообщение от хоста: `kick { target_user_id }`. Сервер:
-  1. Проверяет `is_host(sender)`.
-  2. Закрывает WS таргета с кодом `4004` и `error/kicked`.
-  3. Удаляет из `room_participants` (ставит `left_at = now`).
-  4. Бродкастит `user_left { reason: "kicked" }` остальным.
-  5. Заносит `user_id` в in-memory `banned_users[room_id]` (set).
-- На реджойн через REST `/api/rooms/{id}/join` сервер проверяет
-  `banned_users` и отвечает `403 kicked_from_room`. Список держим
-  in-memory — комнаты single-instance, переживает только до перезапуска
-  процесса, что приемлемо (комната всё равно умрёт без хоста).
-- На фронте: в `ParticipantList` рядом с каждым не-хост-участником
-  кнопка «Kick» (видна только хосту). Confirm-диалог. После kick —
-  toast.
-- У кикнутого: WS получает `error/kicked` → редирект на `/create` с
-  arrival-notice «You were removed from the room by the host».
+#### Option C — local pause for self only (M, **not recommended**)
+Each participant can pause **their own** player without touching the
+server. The server still considers the room playing, drift correction
+via `sync_check` will try to push the participant back to the canonical
+timestamp → drift banner shows up → bad UX.
 
-### Сложность: M
-- Новый WS message-type + handler.
-- Изменение `services/rooms.py::join_by_code` (проверка ban-листа).
-- UI в `ParticipantList` + новые arrival-notice / toast тексты.
-- Тесты: kick → таргет выкинут + не может вернуться; не-хост шлёт
-  kick → `not_host`; kick несуществующего user → `not_in_room`.
+**Complexity:** M, but architecturally dubious. Better skipped.
 
-### Открытые вопросы
-- Бан вечный (до закрытия комнаты) или с TTL? Я бы оставил «до закрытия
-  комнаты» — это in-memory и так.
-- Можно ли хосту разбанить? Если нет — `kick` навсегда. Если да —
-  второй WS-message `unkick`. На MVP — не нужно.
-- Логировать ли kick'и (security audit log, P2 из TODO.md)? Да, когда
-  audit-log будет реализован.
+### Open questions
+- What did the tester actually mean by "no rights"? Clarify:
+  - even the host can't control (then it's a different bug — `isHost`
+    detection)
+  - or it's a viewer, and the behaviour is by-design
+- If we go with B (co-host) — who can grant? Only the host, or a chain
+  of delegation?
 
 ---
 
-## Следующие шаги
+## 2. Room passwords
 
-1. По #1 уточнить у тестировщика, что он имел в виду — варианты A / B / C.
-2. По #2 и #3 — решить порядок: оба нужны для «приватных» комнат, но
-   независимы. Можно делать параллельно или последовательно.
-3. После согласования — переносить выбранные пункты в `TODO.md` с
-   приоритетом P2 (важно перед публичным запуском).
+### Context
+Today a room = `room_code` (8 alnum chars, server-generated). Anyone
+with the code can join. That's fine for friends but not safe for
+public or private scenarios.
+
+### Basic implementation idea
+- DB migration: `rooms.password_hash: text | null`. Hash via bcrypt
+  (reuse `core/security.hash_password / verify_password` — same code
+  path as user passwords).
+- On room creation, the frontend gets an optional "Room password" field.
+  Empty → `password_hash = null`, backwards compatible.
+- On join-by-code: if a room has `password_hash`, require a `password`
+  field in `POST /api/rooms/join`. The server compares via
+  `verify_password`. Wrong password → `401`; missing password → a
+  distinct `password_required` code so the frontend can prompt for one.
+- Rate limit on `/join` already exists (global limit) — add a per-room
+  limit on failed attempts so the password can't be brute-forced.
+- The password itself **never** goes through WS — it's only used during
+  REST join. After that the participant is already in
+  `room_participants` and the WS ticket is issued as usual.
+
+### Complexity: M
+- 1 Alembic migration.
+- 1 form field in "Create room" + a password input in "Join by code".
+- Changes in `services/rooms.py` and `api/rooms.py`.
+- Tests: join without password → 401, join with correct password → 200,
+  join with no password sent → `password_required`, rate limit.
+
+### Open questions
+- Should the host be able to see their own password? Can't store it in
+  plaintext; options are "forget — reset it" or a one-time reveal at
+  creation time.
+- Can the password of an existing room be changed or removed? Probably
+  yes — `PATCH /api/rooms/{id}` (host only).
+- Pass the password via URL (`/join?code=…&password=…`)? **No** — it
+  would land in logs and browser history. Body of POST only.
+
+---
+
+## 3. Host kicking participants
+
+### Context
+Today the host has no way to remove a single participant. If someone
+trolls in chat or is otherwise disruptive, the only way to deal with
+them is to close the whole room. That's too coarse.
+
+### Basic implementation idea
+- New WS message from the host: `kick { target_user_id }`. The server:
+  1. Verifies `is_host(sender)`.
+  2. Closes the target's WS with code `4004` and `error/kicked`.
+  3. Removes them from `room_participants` (sets `left_at = now`).
+  4. Broadcasts `user_left { reason: "kicked" }` to the rest.
+  5. Adds the `user_id` to an in-memory `banned_users[room_id]` set.
+- On a re-join attempt via REST `POST /api/rooms/{id}/join`, the
+  server checks `banned_users` and replies `403 kicked_from_room`. The
+  list is kept in-memory — single-instance rooms only need it to
+  survive until the process restarts, which is acceptable (the room
+  will die without the host anyway).
+- On the frontend: a "Kick" button next to each non-host participant
+  in `ParticipantList`, host-only visibility. Confirm dialog. Toast on
+  success.
+- For the kicked user: WS receives `error/kicked` → redirect to
+  `/create` with an arrival-notice "You were removed from the room by
+  the host".
+
+### Complexity: M
+- New WS message-type + handler.
+- Change to `services/rooms.py::join_by_code` (ban-list check).
+- UI in `ParticipantList` + new arrival-notice / toast copy.
+- Tests: kick → target booted and can't return; non-host sends kick →
+  `not_host`; kicking a non-member → `not_in_room`.
+
+### Open questions
+- Permanent ban (until the room closes) or with a TTL? I'd lean
+  "until the room closes" — it's in-memory anyway.
+- Can the host un-kick? If not, `kick` is final. If yes, a second WS
+  message `unkick`. Not needed for MVP.
+- Log kicks in the security audit log (P2 in `TODO.md`)? Yes, once
+  the audit log lands.
+
+---
+
+## Next steps
+
+1. For #1, clarify with the tester what they meant — pick option
+   A / B / C.
+2. For #2 and #3 — agree on the order. Both are needed for "private"
+   rooms but they're independent, so they can land in parallel or in
+   sequence.
+3. Once a direction is agreed, move the chosen pieces into `TODO.md`
+   under P2 (important before opening to the public).
