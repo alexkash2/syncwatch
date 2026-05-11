@@ -55,6 +55,24 @@ export function useRoomWsHandler({
     }
   }, []);
 
+  const startGraceCountdown = useCallback(
+    (totalSeconds: number) => {
+      clearGraceTimer();
+      setGraceCountdown(totalSeconds);
+
+      let remainingSeconds = totalSeconds;
+      graceTimerRef.current = window.setInterval(() => {
+        remainingSeconds -= 1;
+        setGraceCountdown(Math.max(remainingSeconds, 0));
+
+        if (remainingSeconds <= 0) {
+          clearGraceTimer();
+        }
+      }, 1000);
+    },
+    [clearGraceTimer, setGraceCountdown]
+  );
+
   useEffect(() => clearGraceTimer, [clearGraceTimer]);
 
   return useCallback(
@@ -72,6 +90,20 @@ export function useRoomWsHandler({
             fileName: msg.file_info.file_name,
             fileVersion: msg.file_info.file_version,
           });
+
+          // Rehydrate host presence so the overlay clears when a viewer
+          // reconnects after the host already came back, and re-arms the
+          // countdown if the host is still inside their grace window.
+          if (msg.host_disconnected && msg.host_grace_remaining_ms != null) {
+            setHostDisconnected(true);
+            startGraceCountdown(
+              Math.max(0, Math.round(msg.host_grace_remaining_ms / 1000))
+            );
+          } else {
+            clearGraceTimer();
+            setHostDisconnected(false);
+            setGraceCountdown(0);
+          }
 
           if (previousFileVersion > 0 && nextFileVersion !== previousFileVersion) {
             setFileUrl(null);
@@ -178,23 +210,9 @@ export function useRoomWsHandler({
           break;
 
         case 'host_disconnected': {
-          clearGraceTimer();
           setHostDisconnected(true);
           setRoomStatus('closing');
-
-          const totalSeconds = Math.round(msg.grace_period_ms / 1000);
-          setGraceCountdown(totalSeconds);
-
-          let remainingSeconds = totalSeconds;
-          graceTimerRef.current = window.setInterval(() => {
-            remainingSeconds -= 1;
-            setGraceCountdown(Math.max(remainingSeconds, 0));
-
-            if (remainingSeconds <= 0) {
-              clearGraceTimer();
-            }
-          }, 1000);
-
+          startGraceCountdown(Math.round(msg.grace_period_ms / 1000));
           break;
         }
 
@@ -274,6 +292,7 @@ export function useRoomWsHandler({
       setReferenceFile,
       setRoomStatus,
       setVerifyResult,
+      startGraceCountdown,
     ]
   );
 }

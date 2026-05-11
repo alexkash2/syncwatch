@@ -134,7 +134,7 @@ export function ChatPanel({
   const trimmedInput = input.trim();
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-outline-variant/10 px-4 py-4">
         <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
           Live Chat
@@ -147,7 +147,7 @@ export function ChatPanel({
       <div
         ref={scrollRef}
         onScroll={() => void handleScroll()}
-        className="flex-1 overflow-y-auto px-4 py-4"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
         aria-busy={loadingMore}
       >
         {loadError && messages.length === 0 ? (
@@ -239,7 +239,7 @@ export function ChatPanel({
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-outline-variant/10 p-4">
+      <form onSubmit={handleSubmit} className="shrink-0 border-t border-outline-variant/10 p-4">
         {sendError && (
           <Panel
             id="room-chat-error"

@@ -102,6 +102,8 @@ class ConnectionManager:
         self.disconnected_users[(room_id, user_id)] = {
             "is_host": is_host,
             "was_ready": was_ready,
+            "disconnected_at_ms": self._server_time_ms(),
+            "timeout_ms": timeout * 1000,
         }
 
         async def _timer():
@@ -112,6 +114,14 @@ class ConnectionManager:
         key = (room_id, user_id)
         self._cancel_grace_timer(room_id, user_id)
         self._grace_timers[key] = asyncio.create_task(_timer())
+
+    def grace_remaining_ms(self, room_id: str, user_id: str) -> int | None:
+        """Remaining grace-period budget for a user, or None if not in grace."""
+        entry = self.disconnected_users.get((room_id, user_id))
+        if not entry:
+            return None
+        elapsed = self._server_time_ms() - entry.get("disconnected_at_ms", 0)
+        return max(0, entry.get("timeout_ms", 0) - elapsed)
 
     def _cancel_grace_timer(self, room_id: str, user_id: str):
         key = (room_id, user_id)

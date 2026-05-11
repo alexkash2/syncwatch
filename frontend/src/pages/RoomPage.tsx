@@ -70,7 +70,8 @@ export function RoomPage() {
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'participants'>('chat');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [roomDeckOpen, setRoomDeckOpenState] = useState(false);
+  const [sidebarOpen, setSidebarOpenState] = useState(false);
   const [verifyResult, setVerifyResult] = useState<FileVerifyResult | null>(null);
   const [roomStatus, setRoomStatus] = useState<RoomStatus>('waiting_file');
   const [referenceFile, setReferenceFile] = useState<ReferenceFileState>(EMPTY_REFERENCE_FILE);
@@ -78,6 +79,7 @@ export function RoomPage() {
   const [videoReady, setVideoReady] = useState(false);
   const [interactionHint, setInteractionHint] = useState<string | null>(null);
   const [sessionNotice, setSessionNotice] = useState<SessionNotice | null>(null);
+  const [roomChromeVisible, setRoomChromeVisible] = useState(true);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSeqRef = useRef<number | null>(null);
@@ -90,8 +92,30 @@ export function RoomPage() {
     null
   );
   const previousHostDisconnectedRef = useRef(false);
+  const roomDeckOpenRef = useRef(false);
+  const sidebarOpenRef = useRef(false);
+  const suppressNextVideoToggleRef = useRef(false);
+  const announcedReadyVersionRef = useRef<number | null>(null);
 
   fileUrlRef.current = fileUrl;
+
+  const setRoomDeckOpen = useCallback((open: boolean) => {
+    roomDeckOpenRef.current = open;
+    setRoomDeckOpenState(open);
+  }, []);
+
+  const setSidebarOpen = useCallback((open: boolean) => {
+    sidebarOpenRef.current = open;
+    setSidebarOpenState(open);
+  }, []);
+
+  const toggleSidebarOpen = useCallback(() => {
+    setSidebarOpen(!sidebarOpenRef.current);
+  }, [setSidebarOpen]);
+
+  const closeSidebar = useCallback(() => {
+    setSidebarOpen(false);
+  }, [setSidebarOpen]);
 
   useEffect(() => {
     fileVersionRef.current = fileVersion;
@@ -111,6 +135,7 @@ export function RoomPage() {
   const clearPlaybackState = useCallback(() => {
     setVideoReady(false);
     setVideoError(null);
+    announcedReadyVersionRef.current = null;
   }, []);
 
   const handleWsMessage = useRoomWsHandler({
@@ -203,11 +228,47 @@ export function RoomPage() {
     [clearPlaybackState, setFileUrl]
   );
 
+  const announceLocalFileReady = useCallback(() => {
+    const readyVersion = fileVersionRef.current || fileVersion;
+    if (readyVersion <= 0) {
+      return false;
+    }
+
+    const sent = send('ready', { file_version: readyVersion });
+    if (sent) {
+      announcedReadyVersionRef.current = readyVersion;
+    }
+
+    return sent;
+  }, [fileVersion, send]);
+
   const handleVideoCanPlay = useCallback(() => {
     setVideoReady(true);
     setVideoError(null);
-    send('ready', { file_version: fileVersion });
-  }, [fileVersion, send]);
+    announceLocalFileReady();
+  }, [announceLocalFileReady]);
+
+  useEffect(() => {
+    if (!isConnected) {
+      announcedReadyVersionRef.current = null;
+      return;
+    }
+
+    const video = videoRef.current;
+    const readyVersion = fileVersionRef.current;
+    if (
+      !fileUrl ||
+      videoError ||
+      readyVersion <= 0 ||
+      announcedReadyVersionRef.current === readyVersion ||
+      !video ||
+      video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+    ) {
+      return;
+    }
+
+    announceLocalFileReady();
+  }, [announceLocalFileReady, fileUrl, isConnected, videoError]);
 
   const handleVideoError = useCallback(
     (errorCode: string) => {
@@ -228,7 +289,28 @@ export function RoomPage() {
     }, 2200);
   }, []);
 
+  const handleVideoPointerDown = useCallback(() => {
+    if (!roomDeckOpenRef.current && !sidebarOpenRef.current) {
+      return;
+    }
+
+    suppressNextVideoToggleRef.current = true;
+    setRoomDeckOpen(false);
+    setSidebarOpen(false);
+  }, [setRoomDeckOpen, setSidebarOpen]);
+
   const handleVideoClickToggle = useCallback(() => {
+    if (suppressNextVideoToggleRef.current) {
+      suppressNextVideoToggleRef.current = false;
+      return;
+    }
+
+    if (roomDeckOpenRef.current || sidebarOpenRef.current) {
+      setRoomDeckOpen(false);
+      setSidebarOpen(false);
+      return;
+    }
+
     if (room?.host_id !== user?.id) {
       showInteractionHint();
       return;
@@ -250,7 +332,7 @@ export function RoomPage() {
       send('pause', { current_time_ms: timeMs, file_version: fileVersion });
       setRoomStatus('paused');
     }
-  }, [fileVersion, room?.host_id, send, showInteractionHint, user?.id]);
+  }, [fileVersion, room?.host_id, send, setRoomDeckOpen, setSidebarOpen, showInteractionHint, user?.id]);
 
   const handlePlay = useCallback(
     (timeMs: number) => {
@@ -507,23 +589,25 @@ export function RoomPage() {
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:36px_36px] opacity-25" />
       </div>
 
-      <div className="relative z-10 flex min-h-screen flex-col">
+      <div className="relative z-10 flex min-h-screen flex-col bg-black" data-room-fullscreen-root>
         <RoomHeader
           roomName={room.name}
           roomCode={room.room_code}
           connectionState={connectionState}
           isHost={Boolean(isHost)}
-          roomStatus={roomStatus}
           readyParticipants={readyCount}
           totalParticipants={participants.length}
-          sidebarOpen={sidebarOpen}
+          messagesCount={messages.length}
+          drawerOpen={roomDeckOpen}
+          setDrawerOpen={setRoomDeckOpen}
+          launcherVisible={roomChromeVisible}
           onLeave={handleLeave}
-          onToggleSidebar={() => setSidebarOpen((current) => !current)}
         />
 
-        <main className="flex flex-1 px-3 pb-3 md:px-4 md:pb-4">
-          <div className="flex flex-1 items-stretch gap-3 md:gap-4">
+        <main className="flex flex-1">
+          <div className="flex flex-1 items-stretch">
             <VideoArea
+              roomId={room.id}
               roomStatus={roomStatus}
               fileUrl={fileUrl}
               videoRef={videoRef}
@@ -532,6 +616,7 @@ export function RoomPage() {
               hostDisconnected={hostDisconnected}
               graceCountdown={graceCountdown}
               referenceFileName={referenceFile.fileName}
+              referenceFileVersion={referenceFile.fileVersion}
               videoError={videoError}
               videoReady={videoReady}
               readyParticipants={readyCount}
@@ -545,7 +630,9 @@ export function RoomPage() {
               onVerifyRequest={handleVerifyRequest}
               onVideoCanPlay={handleVideoCanPlay}
               onVideoError={handleVideoError}
+              onVideoPointerDown={handleVideoPointerDown}
               onVideoClickToggle={handleVideoClickToggle}
+              onControlsVisibilityChange={setRoomChromeVisible}
               onPlay={handlePlay}
               onPause={handlePause}
               onSeek={handleSeek}
@@ -554,12 +641,12 @@ export function RoomPage() {
 
             <RoomSidebar
               roomName={room.name}
-              roomCode={room.room_code}
-              connectionState={connectionState}
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               sidebarOpen={sidebarOpen}
-              closeSidebar={() => setSidebarOpen(false)}
+              toggleSidebar={toggleSidebarOpen}
+              closeSidebar={closeSidebar}
+              launcherVisible={roomChromeVisible}
               participants={participants}
               messages={messages}
               currentUserId={user?.id || ''}

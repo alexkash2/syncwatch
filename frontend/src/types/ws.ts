@@ -63,6 +63,8 @@ export interface RoomStateMessage extends BaseWsMessage {
   playback_state: PlaybackState;
   file_info: RoomFileInfo;
   room_status: RoomStatus;
+  host_disconnected?: boolean;
+  host_grace_remaining_ms?: number | null;
 }
 
 export interface UserJoinedMessage extends BaseWsMessage {

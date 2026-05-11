@@ -27,7 +27,6 @@ import {
   WarningCircleIcon,
 } from '../components/ui/icons';
 import { Panel } from '../components/ui/Panel';
-import { StatePanel } from '../components/ui/StatePanel';
 import { usePreferences } from '../hooks/usePreferences';
 import { useUi } from '../hooks/useUi';
 import { useAuth } from '../hooks/useAuth';
@@ -73,10 +72,10 @@ export function CreateRoomPage() {
     if (routeState.focusSection) {
       const targetId = routeState.focusSection;
       window.requestAnimationFrame(() => {
-        document.getElementById(targetId)?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
+        scrollSectionBelowHeader(
+          targetId,
+          preferences.reduceMotion ? 'auto' : 'smooth'
+        );
       });
     }
 
@@ -84,7 +83,14 @@ export function CreateRoomPage() {
       replace: true,
       state: null,
     });
-  }, [location.pathname, location.search, location.state, navigate, pushToast]);
+  }, [
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+    preferences.reduceMotion,
+    pushToast,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -240,16 +246,16 @@ export function CreateRoomPage() {
   }, [pushToast]);
 
   const scrollToSection = useCallback((sectionId: string) => {
-    document.getElementById(sectionId)?.scrollIntoView({
-      behavior: preferences.reduceMotion ? 'auto' : 'smooth',
-      block: 'start',
-    });
+    scrollSectionBelowHeader(
+      sectionId,
+      preferences.reduceMotion ? 'auto' : 'smooth'
+    );
   }, [preferences.reduceMotion]);
 
   return (
     <Layout>
       {arrivalNotice && (
-        <section className="mb-8">
+        <section className="mx-auto mb-8 max-w-5xl">
           <HomeArrivalPanel
             notice={arrivalNotice}
             onDismiss={() => setArrivalNotice(null)}
@@ -577,16 +583,33 @@ function HomeArrivalPanel({
         };
 
   return (
-    <StatePanel
-      eyebrow={notice.eyebrow}
-      title={notice.title}
-      description={notice.description}
-      tone={notice.tone}
-      align="left"
-      icon={meta.icon}
-      className={`relative overflow-hidden rounded-[2.1rem] border px-1 ${meta.panelClass}`}
-      actions={
-        <>
+    <Panel
+      variant="outline"
+      padding="md"
+      className={`relative overflow-hidden rounded-[1.8rem] border ${meta.panelClass}`}
+    >
+      <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-start gap-4">
+          <span
+            className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.1rem] border shadow-[0_16px_40px_rgba(0,0,0,0.16)] ${meta.iconClass}`}
+          >
+            {meta.icon}
+          </span>
+
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
+              {notice.eyebrow}
+            </p>
+            <h3 className="mt-2 text-2xl font-black tracking-tight text-on-surface">
+              {notice.title}
+            </h3>
+            <p className="mt-2 max-w-2xl text-sm leading-7 text-on-surface-variant">
+              {notice.description}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap gap-3 md:justify-end">
           <Button variant={primaryAction.variant} size="sm" onClick={primaryAction.onClick}>
             {primaryAction.label}
           </Button>
@@ -598,19 +621,21 @@ function HomeArrivalPanel({
           <Button variant="ghost" size="sm" onClick={onDismiss}>
             Dismiss
           </Button>
-        </>
-      }
-    />
+        </div>
+      </div>
+    </Panel>
   );
 }
 
 function getArrivalMeta(notice: HomeArrivalNotice): {
   icon: ReactNode;
   panelClass: string;
+  iconClass: string;
 } {
   if (notice.key === 'tab_replaced') {
     return {
       icon: <RefreshIcon size={22} className="animate-spin [animation-duration:3s]" />,
+      iconClass: 'border-primary-container/22 bg-primary-container/10 text-primary',
       panelClass:
         'border-primary-container/26 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))]',
     };
@@ -619,6 +644,7 @@ function getArrivalMeta(notice: HomeArrivalNotice): {
   if (notice.tone === 'danger') {
     return {
       icon: <WarningCircleIcon size={22} />,
+      iconClass: 'border-error/24 bg-error-container/38 text-error',
       panelClass:
         'border-error/24 bg-[radial-gradient(circle_at_top_left,rgba(255,120,100,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]',
     };
@@ -627,6 +653,7 @@ function getArrivalMeta(notice: HomeArrivalNotice): {
   if (notice.tone === 'warning') {
     return {
       icon: <WarningCircleIcon size={22} />,
+      iconClass: 'border-amber-300/22 bg-amber-300/10 text-amber-100',
       panelClass:
         'border-amber-300/22 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]',
     };
@@ -634,6 +661,7 @@ function getArrivalMeta(notice: HomeArrivalNotice): {
 
   return {
     icon: <BrandMarkIcon size={22} />,
+    iconClass: 'border-primary-container/22 bg-primary-container/10 text-primary',
     panelClass:
       'border-primary-container/26 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))]',
   };
@@ -672,4 +700,20 @@ function ActionCard({
       <div className="mt-6">{children}</div>
     </Panel>
   );
+}
+
+function scrollSectionBelowHeader(sectionId: string, behavior: ScrollBehavior) {
+  const target = document.getElementById(sectionId);
+  if (!target) {
+    return;
+  }
+
+  const headerHeight =
+    document.querySelector<HTMLElement>('[data-app-header]')?.getBoundingClientRect().height ?? 112;
+  const targetTop = target.getBoundingClientRect().top + window.scrollY;
+
+  window.scrollTo({
+    top: Math.max(targetTop - headerHeight - 24, 0),
+    behavior,
+  });
 }

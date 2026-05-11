@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../hooks/useAuth';
 import { usePreferences } from '../../hooks/usePreferences';
 import { Button } from '../ui/Button';
@@ -12,6 +12,7 @@ import {
 
 export function Header() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout, openAuthModal, isAuthenticated } = useAuth();
   const { openPreferences, preferences } = usePreferences();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -77,6 +78,11 @@ export function Header() {
   }, [applyHeaderOffset]);
 
   useEffect(() => {
+    lastScrollYRef.current = window.scrollY;
+    applyHeaderOffset(0);
+  }, [applyHeaderOffset, location.pathname]);
+
+  useEffect(() => {
     if (preferences.reduceMotion) {
       lastScrollYRef.current = window.scrollY;
       applyHeaderOffset(0);
@@ -123,6 +129,7 @@ export function Header() {
   return (
     <header
       ref={headerRef}
+      data-app-header
       className="fixed inset-x-0 top-0 z-50 px-4 pt-4 transition-transform duration-100 ease-out will-change-transform md:px-8 xl:px-10"
     >
       <div className="mx-auto flex w-full max-w-[92rem] items-center justify-between rounded-[1.6rem] border border-outline-variant/15 bg-black/38 px-4 py-3 shadow-[0_24px_60px_rgba(0,0,0,0.32)] backdrop-blur-2xl md:px-6">

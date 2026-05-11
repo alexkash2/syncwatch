@@ -1,5 +1,14 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { computeFileHash, getVideoDurationMs } from '../../utils/fileHash';
+import {
+  clearPersistedRoomFile,
+  isPersistentFilePickerSupported,
+  pickPersistentVideoFile,
+  restoreRoomFile,
+  saveFallbackRoomFile,
+  savePersistentRoomFileHandle,
+  type PersistentFileSelection,
+} from '../../utils/persistentFileHandle';
 import type { FileVerifyResult, RoomStatus } from '../../types/ws';
 import { usePreferences } from '../../hooks/usePreferences';
 import { Badge } from '../ui/Badge';
@@ -18,23 +27,27 @@ export type FileStatus =
   | 'not_video';
 
 interface FileSelectorProps {
+  roomId: string;
   onFileVerified: (fileUrl: string) => void;
   onVerifyRequest: (hash: string, size: number, durationMs: number, fileName: string) => void;
   verifyResult: FileVerifyResult | null;
   isHost: boolean;
   roomStatus: RoomStatus;
   referenceFileName: string | null;
+  referenceFileVersion: number;
   readyParticipants: number;
   totalParticipants: number;
 }
 
 export function FileSelector({
+  roomId,
   onFileVerified,
   onVerifyRequest,
   verifyResult,
   isHost,
   roomStatus,
   referenceFileName,
+  referenceFileVersion,
   readyParticipants,
   totalParticipants,
 }: FileSelectorProps) {
@@ -48,7 +61,10 @@ export function FileSelector({
     hash: string;
     size: number;
     durationMs: number;
+    file: File;
+    persistentHandle?: PersistentFileSelection['handle'];
   } | null>(null);
+  const restoredFileKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -58,55 +74,104 @@ export function FileSelector({
     };
   }, []);
 
-  const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+  const persistentFileKey = useMemo(
+    () => (roomId && referenceFileVersion > 0 ? `${roomId}:${referenceFileVersion}` : null),
+    [referenceFileVersion, roomId]
+  );
+
+  const processSelectedFile = useCallback(
+    async (
+      file: File,
+      options: {
+        persistentHandle?: PersistentFileSelection['handle'];
+      } = {}
+    ) => {
+      requestNonce.current += 1;
+      const currentNonce = requestNonce.current;
+
+      if (pendingFile.current) {
+        URL.revokeObjectURL(pendingFile.current.url);
+        pendingFile.current = null;
+      }
+
+      setFileName(file.name);
+
+      if (file.type && !file.type.startsWith('video/')) {
+        setStatus('not_video');
+        void clearPersistedRoomFile(roomId);
+        if (inputRef.current) {
+          inputRef.current.value = '';
+        }
+        return;
+      }
+
+      setStatus('hashing');
+
+      try {
+        const [hash, durationMs] = await Promise.all([
+          computeFileHash(file),
+          getVideoDurationMs(file),
+        ]);
+
+        if (currentNonce !== requestNonce.current) {
+          return;
+        }
+
+        const fileUrl = URL.createObjectURL(file);
+        pendingFile.current = {
+          url: fileUrl,
+          hash,
+          size: file.size,
+          durationMs,
+          file,
+          persistentHandle: options.persistentHandle,
+        };
+        setStatus('verifying');
+        onVerifyRequest(hash, file.size, durationMs, file.name);
+      } catch {
+        if (currentNonce === requestNonce.current) {
+          setStatus('error');
+        }
+      }
+
+      if (inputRef.current) {
+        inputRef.current.value = '';
+      }
+    },
+    [onVerifyRequest, roomId]
+  );
+
+  const handleChooseFile = async () => {
+    if (status === 'hashing' || status === 'verifying') {
+      return;
+    }
+
+    if (isPersistentFilePickerSupported()) {
+      try {
+        const selection = await pickPersistentVideoFile();
+        if (selection) {
+          await processSelectedFile(selection.file, {
+            persistentHandle: selection.handle,
+          });
+          return;
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          console.error('Failed to open persistent file picker:', error);
+        }
+      }
+    }
+
+    inputRef.current?.click();
+  };
+
+  const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
 
-    requestNonce.current += 1;
-    const currentNonce = requestNonce.current;
-
-    if (pendingFile.current) {
-      URL.revokeObjectURL(pendingFile.current.url);
-      pendingFile.current = null;
-    }
-
-    setFileName(file.name);
-
-    if (file.type && !file.type.startsWith('video/')) {
-      setStatus('not_video');
-      if (inputRef.current) {
-        inputRef.current.value = '';
-      }
-      return;
-    }
-
-    setStatus('hashing');
-
-    try {
-      const [hash, durationMs] = await Promise.all([
-        computeFileHash(file),
-        getVideoDurationMs(file),
-      ]);
-
-      if (currentNonce !== requestNonce.current) {
-        return;
-      }
-
-      const fileUrl = URL.createObjectURL(file);
-      pendingFile.current = { url: fileUrl, hash, size: file.size, durationMs };
-      setStatus('verifying');
-      onVerifyRequest(hash, file.size, durationMs, file.name);
-    } catch {
-      if (currentNonce === requestNonce.current) {
-        setStatus('error');
-      }
-    }
-
-    if (inputRef.current) {
-      inputRef.current.value = '';
-    }
+    void processSelectedFile(file);
   };
 
   useEffect(() => {
@@ -124,7 +189,14 @@ export function FileSelector({
       }
 
       if (verifyResult.match && pendingFile.current) {
-        const { url } = pendingFile.current;
+        const { persistentHandle, url, file } = pendingFile.current;
+        if (verifyResult.file_version) {
+          if (persistentHandle) {
+            void savePersistentRoomFileHandle(roomId, verifyResult.file_version, persistentHandle);
+          } else {
+            void saveFallbackRoomFile(roomId, verifyResult.file_version, file);
+          }
+        }
         setStatus('verified');
         pendingFile.current = null;
         onFileVerified(url);
@@ -137,6 +209,7 @@ export function FileSelector({
           verifyResult.reason.toLowerCase().includes('has not selected');
 
         setStatus(waitingForHost ? 'idle' : 'mismatch');
+        void clearPersistedRoomFile(roomId);
 
         if (pendingFile.current) {
           URL.revokeObjectURL(pendingFile.current.url);
@@ -146,9 +219,46 @@ export function FileSelector({
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [onFileVerified, status, verifyResult]);
+  }, [onFileVerified, roomId, status, verifyResult]);
 
   const isWaitingForHost = !isHost && !referenceFileName && roomStatus === 'waiting_file';
+
+  useEffect(() => {
+    if (
+      !persistentFileKey ||
+      !referenceFileName ||
+      isWaitingForHost ||
+      status !== 'idle' ||
+      restoredFileKeyRef.current === persistentFileKey
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    restoredFileKeyRef.current = persistentFileKey;
+
+    void restoreRoomFile(roomId, referenceFileVersion).then((restored) => {
+      if (cancelled || !restored) {
+        return;
+      }
+
+      void processSelectedFile(restored.file, {
+        persistentHandle: restored.handle,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isWaitingForHost,
+    persistentFileKey,
+    processSelectedFile,
+    referenceFileName,
+    referenceFileVersion,
+    roomId,
+    status,
+  ]);
   const copy = getSelectorCopy({
     status,
     isHost,
@@ -192,7 +302,7 @@ export function FileSelector({
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => inputRef.current?.click()}
+                  onClick={() => void handleChooseFile()}
                   disabled={status === 'hashing' || status === 'verifying'}
                   leadingIcon={<VideoIcon size={16} />}
                   className="w-full sm:w-auto"
@@ -219,7 +329,7 @@ export function FileSelector({
               </div>
             </Panel>
 
-            {preferences.showRoomOnboarding && (
+            {preferences.showRoomOnboarding && isHost && (
               <RoomOnboarding
                 isHost={isHost}
                 roomStatus={roomStatus}
