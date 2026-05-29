@@ -180,16 +180,23 @@ export function FileSelector({
     }
 
     const timeoutId = window.setTimeout(() => {
+      // Snapshot pendingFile at callback start. If processSelectedFile already
+      // revoked this URL and replaced it with a new pick, bail immediately so
+      // we never act on a revoked object URL (P2-5).
+      const pending = pendingFile.current;
+      if (!pending || pendingFile.current !== pending) {
+        return;
+      }
+
       if (
         verifyResult.file_hash &&
-        pendingFile.current &&
-        verifyResult.file_hash !== pendingFile.current.hash
+        verifyResult.file_hash !== pending.hash
       ) {
         return;
       }
 
-      if (verifyResult.match && pendingFile.current) {
-        const { persistentHandle, url, file } = pendingFile.current;
+      if (verifyResult.match) {
+        const { persistentHandle, url, file } = pending;
         if (verifyResult.file_version) {
           if (persistentHandle) {
             void savePersistentRoomFileHandle(roomId, verifyResult.file_version, persistentHandle);
@@ -211,8 +218,9 @@ export function FileSelector({
         setStatus(waitingForHost ? 'idle' : 'mismatch');
         void clearPersistedRoomFile(roomId);
 
-        if (pendingFile.current) {
-          URL.revokeObjectURL(pendingFile.current.url);
+        // Guard again: pendingFile identity must still match (P2-5).
+        if (pendingFile.current === pending) {
+          URL.revokeObjectURL(pending.url);
           pendingFile.current = null;
         }
       }

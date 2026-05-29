@@ -92,6 +92,40 @@ class ConnectionManager:
                 self.seq_counters.pop(room_id, None)
         return True
 
+    async def close_user(self, room_id: str, user_id: str, reason: str = "left"):
+        """Force-disconnect a single user's socket — used when they leave via
+        REST `/leave`. The WS message loop only checks membership at handshake,
+        so without this a user who left could keep an open socket and still send
+        chat / ready / playback-control frames. Tells the rest they left and
+        closes the socket. Safe no-op if the user has no active connection.
+        """
+        room = self.rooms.get(room_id)
+        entry = room.get(user_id) if room else None
+        if entry is None:
+            return
+        ws = entry[0]
+        del room[user_id]
+        # They left intentionally — drop any pending grace bookkeeping.
+        self._cancel_grace_timer(room_id, user_id)
+        self.disconnected_users.pop((room_id, user_id), None)
+        # Notify the rest (broadcast no-ops if the room is now empty).
+        await self.broadcast(room_id, {
+            "type": "user_left",
+            "user_id": user_id,
+            "reason": reason,
+        })
+        try:
+            await ws.close(code=4000)
+        except Exception:
+            pass
+        # Mirror disconnect()'s teardown if the room is now empty.
+        if not room:
+            self.rooms.pop(room_id, None)
+            self._stop_heartbeat(room_id)
+            if not self._has_grace_timers(room_id):
+                self.room_states.pop(room_id, None)
+                self.seq_counters.pop(room_id, None)
+
     def start_grace_period(
         self, room_id: str, user_id: str, is_host: bool, callback,
         was_ready: bool = False,
@@ -132,9 +166,18 @@ class ConnectionManager:
     async def broadcast(
         self, room_id: str, message: dict, exclude_user: str | None = None
     ):
+        # Room already torn down (e.g. close_room ran while a handler message was
+        # still in flight): drop silently. Checking first also avoids _next_seq
+        # re-creating an orphan seq_counters entry for a room with no recipients.
+        connections = self.rooms.get(room_id)
+        if not connections:
+            return
         message["seq"] = self._next_seq(room_id)
         message["server_time"] = self._server_time_ms()
-        connections = self.rooms.get(room_id, {})
+        # NOTE: seq is assigned synchronously but the sends below are awaited, so a
+        # concurrent broadcast (heartbeat vs handler) can interleave on the event
+        # loop. seq stays unique + monotonic, so clients must dedup / gap-check on
+        # seq and must NOT assume receive-order == seq-order.
         for uid, (ws, _cid) in list(connections.items()):
             if uid == exclude_user:
                 continue
@@ -144,14 +187,17 @@ class ConnectionManager:
                 pass
 
     async def send_to_user(self, room_id: str, user_id: str, message: dict):
+        # Bail before _next_seq so a message to an absent user can't re-create an
+        # orphan seq_counters entry for an already-closed room.
+        entry = self.rooms.get(room_id, {}).get(user_id)
+        if not entry:
+            return
         message.setdefault("seq", self._next_seq(room_id))
         message.setdefault("server_time", self._server_time_ms())
-        entry = self.rooms.get(room_id, {}).get(user_id)
-        if entry:
-            try:
-                await entry[0].send_json(message)
-            except Exception:
-                pass
+        try:
+            await entry[0].send_json(message)
+        except Exception:
+            pass
 
     def get_room_users(self, room_id: str) -> list[str]:
         return list(self.rooms.get(room_id, {}).keys())

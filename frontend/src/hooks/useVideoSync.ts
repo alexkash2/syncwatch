@@ -24,6 +24,14 @@ export function useVideoSync({
   // can refuse to kick off local playback while the shared timeline is paused.
   const isRoomPlayingRef = useRef(false);
 
+  // Last authoritative playback snapshot from sync_state (P2-2/P2-3).
+  // Stored so we can re-apply it once the video element is ready (canplay).
+  const lastSyncSnapshotRef = useRef<{
+    is_playing: boolean;
+    current_time_ms: number;
+    file_version: number;
+  } | null>(null);
+
   const sendSyncReport = useCallback(
     (video: HTMLVideoElement) => {
       let playbackStatus: 'playing' | 'paused' | 'buffering' | 'error' | 'waiting_interaction' =
@@ -74,6 +82,23 @@ export function useVideoSync({
 
   const handleSyncMessage = useCallback(
     (msg: SyncRelatedMessage) => {
+      // Persist the latest authoritative sync_state snapshot BEFORE the
+      // video-null guard below. On reconnect the local file is usually still
+      // restoring (videoRef null), so without this the fresh room state would
+      // be dropped and resyncToLastState() would replay nothing — or a stale
+      // pre-disconnect state — once the player becomes ready (P2-2/P2-3).
+      if (
+        msg.type === 'sync_state' &&
+        (msg.file_version === undefined || msg.file_version === fileVersion)
+      ) {
+        isRoomPlayingRef.current = msg.is_playing;
+        lastSyncSnapshotRef.current = {
+          is_playing: msg.is_playing,
+          current_time_ms: msg.current_time_ms,
+          file_version: msg.file_version ?? fileVersion,
+        };
+      }
+
       const video = videoRef.current;
       if (!video) {
         return;
@@ -85,8 +110,6 @@ export function useVideoSync({
 
       switch (msg.type) {
         case 'sync_state': {
-          isRoomPlayingRef.current = msg.is_playing;
-
           const targetSeconds = msg.current_time_ms / 1000;
           const driftSeconds = Math.abs(video.currentTime - targetSeconds);
 
@@ -140,11 +163,52 @@ export function useVideoSync({
     [fileVersion, send, sendSyncReport, videoRef]
   );
 
+  // Re-applies the last known sync_state snapshot to the video element.
+  // Called from onVideoCanPlay after a reconnect so a frozen player resumes
+  // instead of staying stuck (P2-2/P2-3). No-op if no snapshot or no video.
+  const resyncToLastState = useCallback(() => {
+    const video = videoRef.current;
+    const snapshot = lastSyncSnapshotRef.current;
+    if (!video || !snapshot) {
+      return;
+    }
+
+    // Only apply if the snapshot belongs to the currently loaded file version.
+    if (snapshot.file_version !== fileVersion) {
+      return;
+    }
+
+    isRoomPlayingRef.current = snapshot.is_playing;
+
+    const targetSeconds = snapshot.current_time_ms / 1000;
+    const driftSeconds = Math.abs(video.currentTime - targetSeconds);
+    if (driftSeconds > 0.25) {
+      video.currentTime = targetSeconds;
+    }
+
+    if (snapshot.is_playing) {
+      if (video.paused) {
+        video
+          .play()
+          .then(() => setAutoplayBlocked(false))
+          .catch(() => {
+            setAutoplayBlocked(true);
+            send('playback_error', { error_code: 'autoplay_blocked' });
+          });
+      }
+    } else {
+      setAutoplayBlocked(false);
+      if (!video.paused) {
+        video.pause();
+      }
+    }
+  }, [fileVersion, send, videoRef]);
+
   useEffect(() => {
     return () => clearTimeout(nudgeTimerRef.current);
   }, []);
 
-  return { handleSyncMessage, autoplayBlocked, resumePlayback };
+  return { handleSyncMessage, autoplayBlocked, resumePlayback, resyncToLastState };
 }
 
 function getBufferHealthMs(video: HTMLVideoElement) {

@@ -46,6 +46,36 @@ class RateLimiter:
             dq.append(now)
             return True
 
+    def peek(self, key: str) -> bool:
+        """True if a new event for `key` would be within the limit, WITHOUT
+        recording it. Pairs with `record()` for count-only-on-failure flows
+        (e.g. only failed logins count, so successful logins behind a shared
+        NAT don't lock everyone out)."""
+        now = time.monotonic()
+        cutoff = now - self.window
+        with self._lock:
+            dq = self._log.get(key)
+            if dq is None:
+                return True
+            while dq and dq[0] < cutoff:
+                dq.popleft()
+            return len(dq) < self.max_events
+
+    def record(self, key: str) -> None:
+        """Record an event for `key` unconditionally (used after a peek-gated
+        failure). Reaps idle keys if at capacity, like `check()`."""
+        now = time.monotonic()
+        cutoff = now - self.window
+        with self._lock:
+            dq = self._log.get(key)
+            if dq is None:
+                if len(self._log) >= self.max_keys:
+                    self._reap(cutoff)
+                dq = self._log.setdefault(key, deque())
+            while dq and dq[0] < cutoff:
+                dq.popleft()
+            dq.append(now)
+
     def _reap(self, cutoff: float) -> int:
         """Drop keys whose newest event is older than the window. Assumes
         the caller is holding the lock."""

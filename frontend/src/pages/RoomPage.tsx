@@ -88,8 +88,10 @@ export function RoomPage() {
   const fileUrlRef = useRef<string | null>(null);
   const interactionHintTimerRef = useRef<number | null>(null);
   const sessionNoticeTimerRef = useRef<number | null>(null);
+  // Initialised to 'connecting' (true initial state) so the very first observed
+  // 'reconnecting' is NOT silently swallowed as the baseline (P2-9).
   const previousConnectionStateRef = useRef<'connected' | 'connecting' | 'reconnecting' | null>(
-    null
+    'connecting'
   );
   const previousHostDisconnectedRef = useRef(false);
   const roomDeckOpenRef = useRef(false);
@@ -196,7 +198,7 @@ export function RoomPage() {
     [clearSessionNoticeTimer]
   );
 
-  const { handleSyncMessage, autoplayBlocked, resumePlayback } = useVideoSync({
+  const { handleSyncMessage, autoplayBlocked, resumePlayback, resyncToLastState } = useVideoSync({
     videoRef,
     send,
     fileVersion,
@@ -246,7 +248,11 @@ export function RoomPage() {
     setVideoReady(true);
     setVideoError(null);
     announceLocalFileReady();
-  }, [announceLocalFileReady]);
+    // Re-apply the last known sync snapshot so a reconnect-while-playing
+    // resumes instead of freezing (P2-2/P2-3). Uses the same play/seek +
+    // autoplay-block guards as the sync_state handler in useVideoSync.
+    resyncToLastState();
+  }, [announceLocalFileReady, resyncToLastState]);
 
   useEffect(() => {
     if (!isConnected) {
@@ -332,27 +338,38 @@ export function RoomPage() {
 
     if (video.paused) {
       video.play().catch(() => {});
-      send('play', { current_time_ms: timeMs, file_version: fileVersion });
-      setRoomStatus('playing');
+      // Only optimistically flip roomStatus when the socket accepted the message;
+      // if send() returns false (socket dropped) the echo won't come (P2-1).
+      if (send('play', { current_time_ms: timeMs, file_version: fileVersion })) {
+        setRoomStatus('playing');
+      }
     } else {
       video.pause();
-      send('pause', { current_time_ms: timeMs, file_version: fileVersion });
-      setRoomStatus('paused');
+      if (send('pause', { current_time_ms: timeMs, file_version: fileVersion })) {
+        setRoomStatus('paused');
+      }
     }
   }, [canControl, fileVersion, send, setRoomDeckOpen, setSidebarOpen, showInteractionHint]);
 
   const handlePlay = useCallback(
     (timeMs: number) => {
-      setRoomStatus('playing');
-      return send('play', { current_time_ms: timeMs, file_version: fileVersion });
+      const sent = send('play', { current_time_ms: timeMs, file_version: fileVersion });
+      // Only optimistically flip when the socket accepted the message (P2-1).
+      if (sent) {
+        setRoomStatus('playing');
+      }
+      return sent;
     },
     [fileVersion, send]
   );
 
   const handlePause = useCallback(
     (timeMs: number) => {
-      setRoomStatus('paused');
-      return send('pause', { current_time_ms: timeMs, file_version: fileVersion });
+      const sent = send('pause', { current_time_ms: timeMs, file_version: fileVersion });
+      if (sent) {
+        setRoomStatus('paused');
+      }
+      return sent;
     },
     [fileVersion, send]
   );
@@ -460,11 +477,6 @@ export function RoomPage() {
 
   useEffect(() => {
     const previousConnectionState = previousConnectionStateRef.current;
-
-    if (previousConnectionState === null) {
-      previousConnectionStateRef.current = connectionState;
-      return;
-    }
 
     if (previousConnectionState === connectionState) {
       return;

@@ -46,6 +46,7 @@ function signalAuthLogout() {
 }
 
 export function storeAuthTokens(tokens: TokenResponse) {
+  sessionDead = false;
   localStorage.setItem('access_token', tokens.access_token);
   localStorage.setItem('refresh_token', tokens.refresh_token);
 }
@@ -65,6 +66,10 @@ apiClient.interceptors.request.use((config) => {
 });
 
 let refreshPromise: Promise<string | null> | null = null;
+// Set to true once refreshAccessToken() returns null so every queued 401
+// request fails fast without re-entering the refresh flow or surfacing its
+// own error toast (P2-7). Reset when a new successful token pair is stored.
+let sessionDead = false;
 
 async function refreshAccessToken() {
   const refreshToken = getRefreshToken();
@@ -103,6 +108,12 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // Session is already known dead — fail fast without re-entering the
+    // refresh flow or surfacing a second error toast (P2-7).
+    if (sessionDead) {
+      return Promise.reject(error);
+    }
+
     originalRequest._retry = true;
 
     if (!refreshPromise) {
@@ -114,6 +125,7 @@ apiClient.interceptors.response.use(
     const nextAccessToken = await refreshPromise;
 
     if (!nextAccessToken) {
+      sessionDead = true;
       return Promise.reject(error);
     }
 

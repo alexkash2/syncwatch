@@ -53,6 +53,12 @@ export function ConfirmDialog({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCancel();
+        return;
+      }
+
       if (event.key !== 'Tab') {
         return;
       }
@@ -82,7 +88,7 @@ export function ConfirmDialog({
 
     dialog.addEventListener('keydown', handleKeyDown);
     return () => dialog.removeEventListener('keydown', handleKeyDown);
-  }, [open]);
+  }, [onCancel, open]);
 
   if (!open) {
     return null;

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { register } from '../../api/auth';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../ui/Button';
@@ -26,6 +26,10 @@ export function AuthModal() {
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+  const errorId = useId();
+
   useEffect(() => {
     if (authModalOpen) {
       setMode(authModalMode);
@@ -40,8 +44,18 @@ export function AuthModal() {
     }
   }, [authModalOpen, closeAuthModal, isAuthenticated]);
 
+  // Initial focus + focus trap + Escape — mirrors SettingsDialog pattern
   useEffect(() => {
     if (!authModalOpen) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      firstFieldRef.current?.focus();
+    });
+
+    const dialog = dialogRef.current;
+    if (!dialog) {
       return;
     }
 
@@ -49,11 +63,38 @@ export function AuthModal() {
       if (event.key === 'Escape') {
         event.preventDefault();
         closeAuthModal();
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const focusableElements = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => !element.hasAttribute('disabled'));
+
+      if (focusableElements.length === 0) {
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement as HTMLElement | null;
+
+      if (event.shiftKey && activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    dialog.addEventListener('keydown', handleKeyDown);
+    return () => dialog.removeEventListener('keydown', handleKeyDown);
   }, [authModalOpen, closeAuthModal]);
 
   if (!authModalOpen) {
@@ -127,8 +168,14 @@ export function AuthModal() {
     setNotice('');
   };
 
+  // Shared props applied to all inputs when there is a form-level error
+  const errorInputProps = error
+    ? { 'aria-invalid': true as const, 'aria-describedby': errorId }
+    : {};
+
   return (
     <div
+      ref={dialogRef}
       className="ui-overlay-enter fixed inset-0 z-[90] flex items-center justify-center bg-black/72 px-4 py-8 backdrop-blur-xl"
       role="dialog"
       aria-modal="true"
@@ -191,6 +238,7 @@ export function AuthModal() {
             {mode === 'register' && (
               <Field label="Username">
                 <Input
+                  ref={firstFieldRef}
                   type="text"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
@@ -199,12 +247,14 @@ export function AuthModal() {
                   required
                   minLength={3}
                   maxLength={30}
+                  {...errorInputProps}
                 />
               </Field>
             )}
 
             <Field label="Email Address">
               <Input
+                ref={mode === 'login' ? firstFieldRef : undefined}
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -213,6 +263,7 @@ export function AuthModal() {
                 autoCapitalize="none"
                 spellCheck={false}
                 required
+                {...errorInputProps}
               />
             </Field>
 
@@ -225,6 +276,7 @@ export function AuthModal() {
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 required
                 minLength={mode === 'register' ? 8 : undefined}
+                {...errorInputProps}
               />
             </Field>
 
@@ -237,6 +289,7 @@ export function AuthModal() {
                   placeholder="Repeat the password"
                   autoComplete="new-password"
                   required
+                  {...errorInputProps}
                 />
               </Field>
             )}
@@ -247,16 +300,23 @@ export function AuthModal() {
               </Panel>
             )}
 
-            {error && (
-              <Panel
-                variant="outline"
-                padding="sm"
-                className="rounded-[1.2rem] border-error/30 bg-error-container/30 text-error"
-                aria-live="polite"
-              >
-                <p className="text-sm">{error}</p>
-              </Panel>
-            )}
+            {/* Persistent live region — always in DOM so SR announces the moment text appears */}
+            <div
+              id={errorId}
+              role="alert"
+              aria-live="assertive"
+              aria-atomic="true"
+            >
+              {error && (
+                <Panel
+                  variant="outline"
+                  padding="sm"
+                  className="rounded-[1.2rem] border-error/30 bg-error-container/30 text-error"
+                >
+                  <p className="text-sm">{error}</p>
+                </Panel>
+              )}
+            </div>
 
             <Button type="submit" variant="primary" size="lg" fullWidth disabled={loading}>
               {loading

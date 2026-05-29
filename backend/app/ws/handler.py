@@ -3,8 +3,6 @@ import math
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-
-logger = logging.getLogger("syncwatch.ws")
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +14,10 @@ from app.models.room import Room
 from app.models.room_participant import RoomParticipant
 from app.models.user import User
 from app.services.chat_service import save_message
-from app.ws.manager import RoomState, manager
+from app.ws.manager import manager
 from app.ws.sync import apply_play, apply_pause, apply_seek, evaluate_drift, get_current_time_ms
+
+logger = logging.getLogger("syncwatch.ws")
 
 router = APIRouter()
 
@@ -223,6 +223,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 # same file_version isn't rejected as not_verified.
                 if state:
                     state.verified_users.add(user_id)
+                    # Notify other clients that this user is ready again (P2-1).
+                    # Without this broadcast the frontend never updates their
+                    # ready indicator after a reconnect.
+                    await manager.broadcast(room_id, {
+                        "type": "participant_ready",
+                        "user_id": user_id,
+                        "is_ready": True,
+                        "file_version": current_fv,
+                    })
 
     # Send room_state to connecting user
     state = manager.room_states.get(room_id)
@@ -312,6 +321,25 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 file_duration_ms = data.get("file_duration_ms", 0)
                 file_name = data.get("file_name", "unknown")
 
+                # Validate metadata before touching the DB (P3-5 / security P3-2).
+                # file_hash must be a hex string 64-128 chars; file_size a positive
+                # int; file_duration_ms a non-negative int (reject negatives, which
+                # would corrupt the seek-clamp in play/pause/seek).
+                _hash_valid = (
+                    isinstance(file_hash, str)
+                    and 64 <= len(file_hash) <= 128
+                    and all(c in "0123456789abcdefABCDEF" for c in file_hash)
+                )
+                _size_valid = isinstance(file_size, int) and not isinstance(file_size, bool) and file_size > 0
+                _dur_valid = isinstance(file_duration_ms, int) and not isinstance(file_duration_ms, bool) and file_duration_ms >= 0
+                if not (_hash_valid and _size_valid and _dur_valid):
+                    await manager.send_to_user(room_id, user_id, {
+                        "type": "error",
+                        "code": "invalid_file_metadata",
+                        "message": "file_hash must be a 64-128 char hex string; file_size a positive int; file_duration_ms a non-negative int.",
+                    })
+                    continue
+
                 async with async_session() as db:
                     ri = await _get_room_info(db, room_id)
 
@@ -330,15 +358,23 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 has_reference = bool(ri["file_hash"])
 
                 if is_host and (not has_reference or ri["file_hash"] != file_hash):
-                    # Host sets or changes the reference file
+                    # Host sets or changes the reference file.
+                    # update_file_info returns the refreshed Room in the same
+                    # session, so we read the new file_version from it directly
+                    # instead of opening a second session (P2-5 atomicity fix).
                     from app.services.room_service import update_file_info
                     async with async_session() as db:
-                        await update_file_info(
+                        updated_room = await update_file_info(
                             db, uuid.UUID(room_id), uuid.UUID(user_id),
                             file_hash, file_size, file_duration_ms, file_name,
                         )
-                    async with async_session() as db:
-                        updated_info = await _get_room_info(db, room_id)
+                    updated_info = {
+                        "file_hash": updated_room.file_hash,
+                        "file_size": updated_room.file_size,
+                        "file_duration_ms": updated_room.file_duration,
+                        "file_name": updated_room.file_name,
+                        "file_version": updated_room.file_version,
+                    }
 
                     if updated_info:
                         new_version = updated_info["file_version"]
@@ -419,9 +455,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     })
 
             elif msg_type == "ready":
-                msg_file_version = data.get("file_version", -1)
                 state = manager.room_states.get(room_id)
-                current_version = state.file_version if state else 0
+                # Room was closed between handshake and this message (P2-6).
+                if state is None:
+                    continue
+                msg_file_version = data.get("file_version", -1)
+                current_version = state.file_version
 
                 if msg_file_version != current_version:
                     await manager.send_to_user(room_id, user_id, {
@@ -434,7 +473,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 # Require a successful file_verify_request against the current
                 # file_version before allowing ready. Without this gate a client
                 # can skip verification and just declare themselves ready.
-                if state is None or user_id not in state.verified_users:
+                if user_id not in state.verified_users:
                     await manager.send_to_user(room_id, user_id, {
                         "type": "error",
                         "code": "not_verified",
@@ -473,6 +512,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     })
 
             elif msg_type == "not_ready":
+                # Room was closed between handshake and this message (P2-6).
+                if manager.room_states.get(room_id) is None:
+                    continue
                 async with async_session() as db:
                     result = await db.execute(
                         select(RoomParticipant).where(
