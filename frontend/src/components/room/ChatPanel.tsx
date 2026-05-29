@@ -41,7 +41,7 @@ const ChatRow = memo(function ChatRow({
         >
           {isCurrentUser ? 'You' : msg.username}
         </span>
-        <span className="text-[10px] text-on-surface-variant/60">
+        <span className="text-[10px] text-on-surface-variant/75">
           {new Date(msg.created_at).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
@@ -209,7 +209,7 @@ export function ChatPanel({
 
             {loadingMore && (
               <div
-                className="text-center text-[11px] text-on-surface-variant/60"
+                className="text-center text-[11px] text-on-surface-variant/75"
                 role="status"
                 aria-live="polite"
               >
@@ -218,7 +218,7 @@ export function ChatPanel({
             )}
 
             {!hasMore && (
-              <div className="text-center text-[11px] text-on-surface-variant/40" role="status">
+              <div className="text-center text-[11px] text-on-surface-variant/70" role="status">
                 Conversation starts here
               </div>
             )}
@@ -262,7 +262,7 @@ export function ChatPanel({
               type="text"
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm text-on-surface outline-none placeholder:text-on-surface-variant/40"
+              className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm text-on-surface outline-none placeholder:text-on-surface-variant/70"
               placeholder="Type a message..."
               maxLength={2000}
               aria-label="Type a chat message"

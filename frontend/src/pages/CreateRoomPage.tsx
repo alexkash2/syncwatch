@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -39,6 +40,7 @@ export function CreateRoomPage() {
   const { user } = useAuth();
   const { preferences, togglePreference } = usePreferences();
   const { confirm, pushToast } = useUi();
+  const errorRegionId = useId();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomName, setRoomName] = useState('');
   const [roomCode, setRoomCode] = useState('');
@@ -266,26 +268,33 @@ export function CreateRoomPage() {
         </section>
       )}
 
-      {(error || roomsError) && (
-        <div className="space-y-3">
-          {error && (
-            <Panel
-              variant="outline"
-              padding="sm"
-              className="rounded-[1.6rem] border-error/30 bg-error-container/30 text-error"
-              aria-live="polite"
-            >
-              <p className="text-sm">{error}</p>
-            </Panel>
-          )}
+      {/* Persistent live region — always in DOM; only the inner text is conditional */}
+      <div
+        id={errorRegionId}
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+      >
+        {(error || roomsError) && (
+          <div className="space-y-3">
+            {error && (
+              <Panel
+                variant="outline"
+                padding="sm"
+                className="rounded-[1.6rem] border-error/30 bg-error-container/30 text-error"
+              >
+                <p className="text-sm">{error}</p>
+              </Panel>
+            )}
 
-          {roomsError && (
-            <Panel variant="outline" padding="sm" className="rounded-[1.6rem]">
-              <p className="text-sm text-on-surface-variant">{roomsError}</p>
-            </Panel>
-          )}
-        </div>
-      )}
+            {roomsError && (
+              <Panel variant="outline" padding="sm" className="rounded-[1.6rem]">
+                <p className="text-sm text-on-surface-variant">{roomsError}</p>
+              </Panel>
+            )}
+          </div>
+        )}
+      </div>
 
       <section className="mt-10 mx-auto grid max-w-5xl gap-6">
         <div id="create-room">

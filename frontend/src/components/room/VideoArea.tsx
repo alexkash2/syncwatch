@@ -85,6 +85,7 @@ export function VideoArea({
   verifyResult,
 }: VideoAreaProps) {
   const { preferences } = usePreferences();
+  const resumeButtonRef = useRef<HTMLButtonElement>(null);
   const connectionMeta = getConnectionMeta(connectionState);
   const everyoneReady = totalParticipants > 0 && readyParticipants === totalParticipants;
   const showCompactOnboarding =
@@ -148,6 +149,15 @@ export function VideoArea({
     };
   }, [clearControlsHideTimer, fileUrl, onControlsVisibilityChange, scheduleControlsHide]);
 
+  // Move focus to the Resume button when autoplay is blocked
+  useEffect(() => {
+    if (autoplayBlocked) {
+      window.requestAnimationFrame(() => {
+        resumeButtonRef.current?.focus();
+      });
+    }
+  }, [autoplayBlocked]);
+
   return (
     <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-black">
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
@@ -194,7 +204,11 @@ export function VideoArea({
               />
 
               {autoplayBlocked && (
-                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/65 px-4">
+                <div
+                  className="absolute inset-0 z-40 flex items-center justify-center bg-black/65 px-4"
+                  role="status"
+                  aria-live="polite"
+                >
                   <div className="max-w-md rounded-[1.75rem] border border-primary-container/25 bg-surface-container-low/85 p-6 text-center shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                     <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
                       Action Needed
@@ -206,7 +220,7 @@ export function VideoArea({
                       Your browser blocked autoplay. Resume locally once and the room will continue from the synced timeline.
                     </p>
                     <div className="mt-5">
-                      <Button variant="primary" size="md" onClick={onResumePlayback}>
+                      <Button ref={resumeButtonRef} variant="primary" size="md" onClick={onResumePlayback}>
                         Resume Playback
                       </Button>
                     </div>
@@ -236,7 +250,11 @@ export function VideoArea({
 
               {!videoReady && !videoError && !hostDisconnected && (
                 <div className="pointer-events-none absolute inset-x-4 bottom-28 z-20 md:inset-x-6 md:bottom-32">
-                  <div className="inline-flex items-center gap-3 rounded-full border border-outline-variant/15 bg-black/55 px-4 py-2 text-xs text-on-surface-variant backdrop-blur-xl">
+                  <div
+                    className="inline-flex items-center gap-3 rounded-full border border-outline-variant/15 bg-black/55 px-4 py-2 text-xs text-on-surface-variant backdrop-blur-xl"
+                    role="status"
+                    aria-live="polite"
+                  >
                     <span className="h-2 w-2 animate-pulse rounded-full bg-primary-container" />
                     Preparing the local video player...
                   </div>
@@ -245,7 +263,11 @@ export function VideoArea({
 
               {interactionHint && (
                 <div className="pointer-events-none absolute inset-x-4 bottom-28 z-30 flex justify-center md:inset-x-6 md:bottom-32">
-                  <div className="rounded-full border border-primary-container/20 bg-black/66 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-primary backdrop-blur-xl">
+                  <div
+                    className="rounded-full border border-primary-container/20 bg-black/66 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-primary backdrop-blur-xl"
+                    role="status"
+                    aria-live="polite"
+                  >
                     {interactionHint}
                   </div>
                 </div>
