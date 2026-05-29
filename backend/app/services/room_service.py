@@ -1,7 +1,7 @@
 import secrets
 import uuid
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -9,7 +9,6 @@ from sqlalchemy.orm import selectinload
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.room import Room
 from app.models.room_participant import RoomParticipant
-from app.models.user import User
 
 ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 

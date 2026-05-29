@@ -1,5 +1,4 @@
 """Unit tests for room_service logic that doesn't require a database."""
-import re
 
 import pytest
 from pydantic import ValidationError

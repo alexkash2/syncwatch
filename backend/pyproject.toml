@@ -1,0 +1,11 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+# Ruff's default lint set is E4/E7/E9 + F. We keep that but silence two
+# pycodestyle checks that are false positives against SQLAlchemy query
+# expressions, where the operator overloads REQUIRE value comparison:
+#   E711 — `Column == None`  (compiles to `IS NULL`; `is None` would not work)
+#   E712 — `Column == True`  (compiles to `= true`)
+ignore = ["E711", "E712"]
