@@ -1,8 +1,6 @@
 """Unit tests for sync algorithm math."""
 import time
-from unittest.mock import patch
 
-import pytest
 
 from app.ws.manager import RoomState
 from app.ws.sync import apply_play, apply_pause, apply_seek, evaluate_drift, get_current_time_ms

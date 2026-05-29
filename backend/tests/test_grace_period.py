@@ -1,5 +1,4 @@
 """Unit tests for grace period logic in ConnectionManager."""
-import asyncio
 from unittest.mock import AsyncMock
 
 import pytest

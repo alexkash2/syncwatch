@@ -1,10 +1,9 @@
 """Unit tests for ConnectionManager logic."""
-import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
 
-from app.ws.manager import ConnectionManager, RoomState
+from app.ws.manager import ConnectionManager
 
 
 @pytest.fixture

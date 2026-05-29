@@ -3,8 +3,6 @@ import math
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-
-logger = logging.getLogger("syncwatch.ws")
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +14,10 @@ from app.models.room import Room
 from app.models.room_participant import RoomParticipant
 from app.models.user import User
 from app.services.chat_service import save_message
-from app.ws.manager import RoomState, manager
+from app.ws.manager import manager
 from app.ws.sync import apply_play, apply_pause, apply_seek, evaluate_drift, get_current_time_ms
+
+logger = logging.getLogger("syncwatch.ws")
 
 router = APIRouter()
 
