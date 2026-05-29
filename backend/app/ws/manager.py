@@ -132,9 +132,18 @@ class ConnectionManager:
     async def broadcast(
         self, room_id: str, message: dict, exclude_user: str | None = None
     ):
+        # Room already torn down (e.g. close_room ran while a handler message was
+        # still in flight): drop silently. Checking first also avoids _next_seq
+        # re-creating an orphan seq_counters entry for a room with no recipients.
+        connections = self.rooms.get(room_id)
+        if not connections:
+            return
         message["seq"] = self._next_seq(room_id)
         message["server_time"] = self._server_time_ms()
-        connections = self.rooms.get(room_id, {})
+        # NOTE: seq is assigned synchronously but the sends below are awaited, so a
+        # concurrent broadcast (heartbeat vs handler) can interleave on the event
+        # loop. seq stays unique + monotonic, so clients must dedup / gap-check on
+        # seq and must NOT assume receive-order == seq-order.
         for uid, (ws, _cid) in list(connections.items()):
             if uid == exclude_user:
                 continue
@@ -144,14 +153,17 @@ class ConnectionManager:
                 pass
 
     async def send_to_user(self, room_id: str, user_id: str, message: dict):
+        # Bail before _next_seq so a message to an absent user can't re-create an
+        # orphan seq_counters entry for an already-closed room.
+        entry = self.rooms.get(room_id, {}).get(user_id)
+        if not entry:
+            return
         message.setdefault("seq", self._next_seq(room_id))
         message.setdefault("server_time", self._server_time_ms())
-        entry = self.rooms.get(room_id, {}).get(user_id)
-        if entry:
-            try:
-                await entry[0].send_json(message)
-            except Exception:
-                pass
+        try:
+            await entry[0].send_json(message)
+        except Exception:
+            pass
 
     def get_room_users(self, room_id: str) -> list[str]:
         return list(self.rooms.get(room_id, {}).keys())
