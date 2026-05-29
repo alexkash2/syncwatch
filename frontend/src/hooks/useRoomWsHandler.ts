@@ -116,10 +116,14 @@ export function useRoomWsHandler({
           // overlay if the browser refuses `play()`. A direct video.play() here
           // would silently fail on reconnect into a playing room and leave the
           // viewer with a frozen player and no overlay.
+          // Carry file_version so the snapshot is tagged with the room's version
+          // (not the still-stale local fileVersion state) — otherwise the reconnect
+          // resync no-ops when the restored video loads at the real version.
           onSyncMessage({
             type: 'sync_state',
             is_playing: msg.playback_state.is_playing,
             current_time_ms: msg.playback_state.current_time_ms,
+            file_version: nextFileVersion,
           });
 
           break;

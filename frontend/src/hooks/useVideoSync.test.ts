@@ -144,4 +144,37 @@ describe('useVideoSync', () => {
     // play() should not have been called again
     expect((mockVideo.play as ReturnType<typeof vi.fn>).mock.calls.length).toBe(playCallsBefore);
   });
+
+  it('stores an explicit-version snapshot even when it differs from the current hook fileVersion (reconnect into existing file)', async () => {
+    const videoRef: { current: HTMLVideoElement | null } = { current: null };
+    const send = vi.fn().mockReturnValue(true);
+
+    // Reconnect: local hook fileVersion is still 0 while the room is at version 1.
+    const { result, rerender } = renderHook(
+      ({ fileVersion }: { fileVersion: number }) =>
+        useVideoSync({ videoRef, send, fileVersion }),
+      { initialProps: { fileVersion: 0 } }
+    );
+
+    await act(async () => {
+      result.current.handleSyncMessage({
+        type: 'sync_state',
+        is_playing: true,
+        current_time_ms: 7000,
+        file_version: 1,
+      });
+    });
+
+    // Local file finishes restoring; the hook's fileVersion catches up to 1.
+    const mockVideo = makeMockVideo(true);
+    videoRef.current = mockVideo;
+    rerender({ fileVersion: 1 });
+
+    await act(async () => {
+      result.current.resyncToLastState();
+    });
+
+    expect(mockVideo.currentTime).toBeCloseTo(7, 1);
+    expect(mockVideo.play).toHaveBeenCalledTimes(1);
+  });
 });

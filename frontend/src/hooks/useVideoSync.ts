@@ -85,12 +85,12 @@ export function useVideoSync({
       // Persist the latest authoritative sync_state snapshot BEFORE the
       // video-null guard below. On reconnect the local file is usually still
       // restoring (videoRef null), so without this the fresh room state would
-      // be dropped and resyncToLastState() would replay nothing — or a stale
-      // pre-disconnect state — once the player becomes ready (P2-2/P2-3).
-      if (
-        msg.type === 'sync_state' &&
-        (msg.file_version === undefined || msg.file_version === fileVersion)
-      ) {
+      // be dropped and resyncToLastState() would replay nothing once the player
+      // becomes ready. Store with the message's OWN version (the reconnect
+      // snapshot carries file_version even though the hook's `fileVersion` prop
+      // may still be stale) and compare versions only at apply time — otherwise
+      // the snapshot is tagged with the wrong version and resync no-ops.
+      if (msg.type === 'sync_state') {
         isRoomPlayingRef.current = msg.is_playing;
         lastSyncSnapshotRef.current = {
           is_playing: msg.is_playing,

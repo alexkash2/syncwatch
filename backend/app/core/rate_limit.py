@@ -36,8 +36,7 @@ class RateLimiter:
         with self._lock:
             dq = self._log.get(key)
             if dq is None:
-                if len(self._log) >= self.max_keys:
-                    self._reap(cutoff)
+                self._ensure_capacity(cutoff)
                 dq = self._log.setdefault(key, deque())
             while dq and dq[0] < cutoff:
                 dq.popleft()
@@ -69,12 +68,31 @@ class RateLimiter:
         with self._lock:
             dq = self._log.get(key)
             if dq is None:
-                if len(self._log) >= self.max_keys:
-                    self._reap(cutoff)
+                self._ensure_capacity(cutoff)
                 dq = self._log.setdefault(key, deque())
             while dq and dq[0] < cutoff:
                 dq.popleft()
             dq.append(now)
+
+    def release(self, key: str) -> None:
+        """Give back one previously-recorded event for `key`. Used to neutralize
+        a reservation after a successful auth so only FAILED attempts ultimately
+        count toward the limit (see api/auth.login)."""
+        with self._lock:
+            dq = self._log.get(key)
+            if dq:
+                dq.pop()
+
+    def _ensure_capacity(self, cutoff: float) -> None:
+        """Make room for one new key: reap idle keys, then if still at the hard
+        cap (all keys active in-window) evict the oldest-inserted, so `max_keys`
+        is a hard bound rather than a soft one. Caller holds the lock."""
+        if len(self._log) < self.max_keys:
+            return
+        self._reap(cutoff)
+        while len(self._log) >= self.max_keys:
+            # dict preserves insertion order → first key is the oldest-inserted.
+            del self._log[next(iter(self._log))]
 
     def _reap(self, cutoff: float) -> int:
         """Drop keys whose newest event is older than the window. Assumes
