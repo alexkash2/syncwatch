@@ -220,7 +220,9 @@ export function useRoomWsHandler({
           clearGraceTimer();
           setHostDisconnected(false);
           setGraceCountdown(0);
-          setRoomStatus('paused');
+          // Use the server's restored status (e.g. "waiting_ready") instead of
+          // hard-coding "paused", which would drop a not-yet-ready room.
+          setRoomStatus(msg.room_status ?? 'paused');
           break;
 
         case 'room_closed':
@@ -267,6 +269,15 @@ export function useRoomWsHandler({
               tone: 'warning',
               title: 'Slow down',
               description: msg.message || 'You are sending messages too quickly.',
+              durationMs: 3200,
+            });
+          } else if (msg.code === 'file_version_mismatch') {
+            // Stale command; self-heals via the next sync_state/file_changed — no destructive UI.
+          } else if (msg.message) {
+            pushToast({
+              tone: 'warning',
+              title: 'Heads up',
+              description: msg.message,
               durationMs: 3200,
             });
           }

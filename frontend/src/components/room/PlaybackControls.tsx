@@ -17,13 +17,13 @@ import {
 
 interface PlaybackControlsProps {
   videoRef: RefObject<HTMLVideoElement | null>;
-  isHost: boolean;
+  canControl: boolean;
   onPlay: (timeMs: number) => void;
   onPause: (timeMs: number) => void;
   onSeek: (timeMs: number) => void;
   videoReady: boolean;
   visible: boolean;
-  onNonHostControlAttempt?: () => void;
+  onBlockedControlAttempt?: () => void;
 }
 
 const SKIP_SECONDS = 5;
@@ -31,13 +31,13 @@ const PLAYBACK_ACCESS_NOTE_ID = 'playback-access-note';
 
 export function PlaybackControls({
   videoRef,
-  isHost,
+  canControl,
   onPlay,
   onPause,
   onSeek,
   videoReady,
   visible,
-  onNonHostControlAttempt,
+  onBlockedControlAttempt,
 }: PlaybackControlsProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -103,8 +103,8 @@ export function PlaybackControls({
   }, [videoReady, videoRef, volume]);
 
   const togglePlay = useCallback(() => {
-    if (!isHost) {
-      onNonHostControlAttempt?.();
+    if (!canControl) {
+      onBlockedControlAttempt?.();
       return;
     }
 
@@ -121,12 +121,12 @@ export function PlaybackControls({
       video.pause();
       onPause(timeMs);
     }
-  }, [isHost, onNonHostControlAttempt, onPause, onPlay, videoRef]);
+  }, [canControl, onBlockedControlAttempt, onPause, onPlay, videoRef]);
 
   const skipBy = useCallback(
     (seconds: number) => {
-      if (!isHost) {
-        onNonHostControlAttempt?.();
+      if (!canControl) {
+        onBlockedControlAttempt?.();
         return;
       }
 
@@ -139,7 +139,7 @@ export function PlaybackControls({
       video.currentTime = newTime;
       onSeek(Math.round(newTime * 1000));
     },
-    [isHost, onNonHostControlAttempt, onSeek, videoRef]
+    [canControl, onBlockedControlAttempt, onSeek, videoRef]
   );
 
   const toggleFullscreen = useCallback(() => {
@@ -210,8 +210,8 @@ export function PlaybackControls({
   const handleSeekEnd = useCallback(() => {
     setIsSeeking(false);
 
-    if (!isHost) {
-      onNonHostControlAttempt?.();
+    if (!canControl) {
+      onBlockedControlAttempt?.();
       return;
     }
 
@@ -221,7 +221,7 @@ export function PlaybackControls({
     }
 
     onSeek(Math.round(seekValueRef.current * 1000));
-  }, [isHost, onNonHostControlAttempt, onSeek, videoRef]);
+  }, [canControl, onBlockedControlAttempt, onSeek, videoRef]);
 
   const formatTime = (seconds: number) => {
     if (!Number.isFinite(seconds)) {
@@ -258,9 +258,7 @@ export function PlaybackControls({
       }`}
     >
       <p id={PLAYBACK_ACCESS_NOTE_ID} className="sr-only">
-        {isHost
-          ? 'You control playback for the room. Space toggles play, arrow keys seek, and F toggles fullscreen.'
-          : 'Playback controls are locked for viewers. Only the host can change the shared timeline.'}
+        Space toggles play, arrow keys seek, and F toggles fullscreen.
       </p>
 
       <div className="mb-4 w-full">
@@ -275,7 +273,7 @@ export function PlaybackControls({
           onChange={handleSeekChange}
           onMouseUp={handleSeekEnd}
           onTouchEnd={handleSeekEnd}
-          disabled={!isHost}
+          disabled={!canControl}
           className="media-slider w-full cursor-pointer disabled:cursor-default disabled:opacity-50"
           style={timelineFillStyle}
           aria-label="Playback position"
@@ -294,9 +292,9 @@ export function PlaybackControls({
             icon={isPlaying ? <PauseIcon size={28} /> : <PlayIcon size={28} />}
             label={isPlaying ? 'Pause' : 'Play'}
             onClick={togglePlay}
-            enabled={isHost}
-            ariaLabel={isHost ? 'Play or pause video' : 'Only the host can control playback'}
-            title={isHost ? 'Play or pause' : 'Only the host can control playback'}
+            enabled={canControl}
+            ariaLabel={'Play or pause video'}
+            title={'Play or pause'}
             ariaPressed={isPlaying}
             describedBy={PLAYBACK_ACCESS_NOTE_ID}
             iconOnly
