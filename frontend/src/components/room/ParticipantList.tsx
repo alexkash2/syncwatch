@@ -60,7 +60,7 @@ export function ParticipantList({
             >
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-container-highest text-sm font-black text-primary">
-                  {participant.username[0].toUpperCase()}
+                  {participant.username?.[0]?.toUpperCase() ?? '?'}
                 </div>
 
                 <div className="min-w-0 flex-1">

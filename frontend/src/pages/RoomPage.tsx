@@ -623,7 +623,8 @@ export function RoomPage() {
           onLeave={handleLeave}
         />
 
-        <main className="flex flex-1">
+        <main id="main" className="flex flex-1">
+          <h1 className="sr-only">{room?.name ?? 'Room'}</h1>
           <div className="flex flex-1 items-stretch">
             <VideoArea
               roomId={room.id}

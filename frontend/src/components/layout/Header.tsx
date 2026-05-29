@@ -193,7 +193,7 @@ export function Header() {
           )}
 
           {user && userMenuOpen && (
-            <div className="absolute right-0 top-[calc(100%+0.6rem)] z-20 min-w-56 rounded-[1.4rem] border border-outline-variant/15 bg-black/38 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.32)] backdrop-blur-2xl">
+            <div role="menu" className="absolute right-0 top-[calc(100%+0.6rem)] z-20 min-w-56 rounded-[1.4rem] border border-outline-variant/15 bg-black/38 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.32)] backdrop-blur-2xl">
               <button
                 type="button"
                 onClick={() => {

@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-05-30 — P3 cleanup (audit leftovers, branch `chore/p3-cleanup`)
+
+Closed the actionable P3s from the four audits (the infra/cosmetic ones are
+documented as deferred):
+
+- **security** — removed the unused `passlib` dependency; `close_user` now prunes
+  the departed user from `RoomState.verified_users`.
+- **backend** — `ConnectionManager` swallow-points now `logger.debug(..., exc_info=True)`
+  instead of bare `pass`; commented the intentional `playback_rate = 1.0` reset in `apply_play`.
+- **a11y** — skip-to-main-content link + `id="main"` (Layout & RoomPage), a visually
+  hidden `<h1>` on the room screen, `role="menu"` on the user dropdown.
+- **frontend** — defensive empty-username guard in `ParticipantList`; explicit
+  `seqForReconnect` capture in `useWebSocket` (read-before-reset clarity).
+
+Deferred (documented): python-jose→PyJWT migration, large-file hashing path,
+ErrorBoundary→Sentry, SECRET_KEY default behavior, and assorted cosmetic items.
+
+Gates: backend pytest 74 + ruff clean; frontend tsc + lint + build + vitest 44.
+
 ## 2026-05-30 — Codex audit review, round 2 (branch `audit/p1-p2-fixes`)
 
 P1=0, P2=0 (round-1's three blockers confirmed closed), P3=1 — applied:
