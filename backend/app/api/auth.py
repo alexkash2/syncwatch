@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from app.core.rate_limit import (
     login_limiter,
     refresh_limiter,
@@ -75,9 +75,18 @@ async def login(
     if not login_limiter.check(email_key):
         login_limiter.release(ip_key)  # don't burn the IP slot on an email-bucket 429
         _raise_rate_limited()
-    # If login_user raises (bad credentials / disabled), the reservations stay in
-    # place and the failure counts. On success we give both slots back.
-    result = await login_user(db, body.email, body.password)
+    try:
+        result = await login_user(db, body.email, body.password)
+    except BadRequestError:
+        # Invalid credentials / disabled account — a real failed attempt, so the
+        # reservation stays counted.
+        raise
+    except Exception:
+        # Transient non-credential failure (e.g. a DB error): don't penalize the
+        # user — give both reserved slots back so repeated 500s can't lock them out.
+        login_limiter.release(ip_key)
+        login_limiter.release(email_key)
+        raise
     login_limiter.release(ip_key)
     login_limiter.release(email_key)
     return result

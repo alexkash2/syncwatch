@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-05-30 — Codex audit review, round 2 (branch `audit/p1-p2-fixes`)
+
+P1=0, P2=0 (round-1's three blockers confirmed closed), P3=1 — applied:
+
+- **P3** `auth.py` — a transient non-credential error in `login_user()` (e.g. a DB
+  blip) left both reserved limiter slots counted, so repeated 500s could briefly
+  lock out a legitimate user. Now release both slots on non-`BadRequestError`
+  exceptions; invalid-credential failures still count. Added a regression test
+  (`test_transient_login_error_releases_rate_limit_slots`).
+
+Gates: backend pytest 74 + ruff clean; frontend vitest 44.
+
 ## 2026-05-30 — Codex audit review, round 1 (branch `audit/p1-p2-fixes`)
 
 Independent Codex pass over the audit branch (`reviews/codex-prompt-audit.md`).
