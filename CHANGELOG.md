@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-05-30 — Codex audit review, round 1 (branch `audit/p1-p2-fixes`)
+
+Independent Codex pass over the audit branch (`reviews/codex-prompt-audit.md`).
+P1=1, P2=2, P3=2 — all applied:
+
+- **P1** login limiter was peek-then-record → a burst of concurrent bad logins
+  could bypass the cap. Now reserves atomically (`check()`) before auth and
+  releases on success (`RateLimiter.release()`).
+- **P2** reconnect snapshot was tagged with the stale local file_version → resync
+  no-op'd; the synthetic sync_state now carries `file_version` and useVideoSync
+  compares versions only at apply time.
+- **P2** queued chat/ready frames could process after `/leave`; added a
+  connection-identity check at the top of the WS loop.
+- **P3** `max_keys` was a soft cap → `_ensure_capacity()` now evicts oldest when full.
+- **P3** added `tests/test_rate_limit.py` (direct limiter unit tests) + frontend
+  regression tests for the reconnect snapshot-version fix.
+
+Gates: backend pytest 73 + ruff clean; frontend vitest 44.
+
 ## 2026-05-30 — Test coverage + CI lint (branch `test/coverage-ci`)
 
 Closed the biggest coverage gap (the WS layer had zero e2e tests) and made the
