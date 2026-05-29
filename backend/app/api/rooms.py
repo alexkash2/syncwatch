@@ -94,11 +94,17 @@ async def leave_room(
     # instead of waiting for host-grace-period timeout. Exclude the host from
     # the broadcast — they're already navigating away; a "host left" flash to
     # themselves is nonsense.
+    from app.ws.manager import manager
     if was_host:
-        from app.ws.manager import manager
         await manager.close_room(
             str(room_id), "host_left", exclude_user=str(current_user.id)
         )
+    else:
+        # A non-host's WS isn't torn down by leave_room itself; the message loop
+        # only re-checks membership at handshake, so close their socket here — or
+        # a departed user could keep sending chat / ready / playback-control
+        # frames on the still-open connection.
+        await manager.close_user(str(room_id), str(current_user.id), "left")
     return {"ok": True}
 
 

@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-05-30 — P1/P2 audit remediation sprint (branch `audit/p1-p2-fixes`)
+
+Acted on the four independent project-wide audits in `reviews/` (backend, frontend,
+security, a11y). Fixed every P1+P2 that was a safe, in-scope code change; documented
+the rest (migrations / deployment tuning) with rationale. Gates after each chunk:
+backend pytest 62, frontend tsc + lint + build + vitest 29.
+
+**a11y (P1×2, P2×8):** `Field` label association (`useId`+`htmlFor`+`cloneElement`),
+`AuthModal` focus-trap + initial focus + persistent error live-region + `aria-invalid`,
+`CreateRoomPage` error live-region, `ConfirmDialog` Escape, `HostDisconnectOverlay`
+`alertdialog`+live countdown, autoplay/preparing/hint overlays `role=status`+focus-move,
+contrast bumps on informational text/placeholders.
+
+**backend correctness (P1×1, P2×6):** reconnect now broadcasts `participant_ready`;
+`ready`/`not_ready` no-op on a closed room; atomic `file_verify` (use the Room returned
+by `update_file_info`); server-side file-metadata validation; `broadcast`/`send_to_user`
+bail for torn-down rooms (P1-1 residue); documented broadcast seq-ordering (P2-3),
+verified autopause state-pop guard (P2-2).
+
+**frontend reliability (P2×5):** reconnect re-sync so a playing room doesn't freeze
+(`useVideoSync.resyncToLastState`, snapshot stored before the video-null guard);
+optimistic `roomStatus` only on accepted `send`; connection-banner first-transition;
+mismatched-file object-URL race; refresh-interceptor `sessionDead` flag.
+
+**security (P2):** login rate limiter now counts only **failed** attempts + normalizes
+the email key (`strip().lower()`) — a shared NAT isn't locked out by successful logins
+(new test); non-host `/leave` force-closes the WS socket (`manager.close_user`) so a
+departed user can't keep sending frames. Documented accepted MVP trade-offs in
+`docs/SECURITY.md` (client-attested file hash, `Origin: None`, `trusted_hosts="*"`,
+in-memory `jti`/ticket, token_version revocation as a follow-up).
+
 ## 2026-05-29 — Viewer playback control (any participant can play/pause/seek)
 
 Implemented per `reviews/viewer-control-plan.md` (Sonnet → Opus self-review).

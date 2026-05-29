@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from app.core.rate_limit import (
     login_limiter,
     refresh_limiter,
@@ -61,12 +61,21 @@ async def login(
     body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)
 ):
     # Rate-limit by source IP *and* by target email, so one IP can't brute many
-    # accounts and one account can't be brute-forced from many IPs.
-    if not login_limiter.check(_client_key(request)):
+    # accounts and one account can't be brute-forced from many IPs. Only FAILED
+    # logins are counted (peek up front, record on failure) — otherwise a shared
+    # NAT (e.g. a classroom) where successful logins burn the per-IP budget would
+    # lock everyone out. The email key is normalized identically to the lookup
+    # (`strip().lower()`) so casing/whitespace variants can't mint fresh buckets.
+    ip_key = _client_key(request)
+    email_key = f"email:{body.email.strip().lower()}"
+    if not login_limiter.peek(ip_key) or not login_limiter.peek(email_key):
         _raise_rate_limited()
-    if not login_limiter.check(f"email:{body.email.lower()}"):
-        _raise_rate_limited()
-    return await login_user(db, body.email, body.password)
+    try:
+        return await login_user(db, body.email, body.password)
+    except BadRequestError:
+        login_limiter.record(ip_key)
+        login_limiter.record(email_key)
+        raise
 
 
 @router.post("/refresh", response_model=TokenResponse)

@@ -86,9 +86,9 @@ These are explicit trade-offs for MVP scope. Full notes and effort estimates are
 **Mitigation plan:** move tokens to `HttpOnly; Secure; SameSite=Strict` cookies and add CSRF protection (double-submit cookie or `X-CSRF-Token` header).
 
 ### Refresh token revocation
-`POST /api/auth/refresh` only verifies signature and expiry. There's no logout-with-revocation and no rotation — a stolen refresh token is valid for up to 7 days.
+Refresh tokens **are** single-use with rotation + in-memory `jti` replay detection (`mark_refresh_used`). What's still missing: an explicit logout-with-revocation and bulk revocation (e.g. on password change). A *rotated* (not replayed) stolen token also yields an unbroken new chain while the legitimate user's next refresh fails — i.e. the failure mode currently favors the attacker.
 
-**Mitigation plan:** add `token_version: int` to `users`, embed in JWT, increment on logout/password change. Reject tokens with stale version. Optionally move to Redis-backed `jti` blocklist if finer-grained revocation is needed.
+**Mitigation plan:** add `token_version: int` to `users`, embed in JWT, increment on logout/password change; reject stale-version tokens. Optionally a Redis-backed `jti` blocklist for finer-grained revocation.
 
 ### No 2FA
 Only email + password. No TOTP, no backup codes.
@@ -101,10 +101,21 @@ Currently nothing logs security-relevant events (failed logins, rate-limit hits,
 ### Single-instance in-memory state
 `ConnectionManager`, rate limiters, and ws-ticket store are all process-local. Running ≥2 backend instances requires Redis pub/sub + Redis-backed state.
 
+### File identity is client-attested
+The "everyone is watching the same file" check is a partial SHA-256 computed in the browser and sent over WS. A crafted client can echo the room's reference hash without owning the file and be marked verified/ready. For a friends-watch-party threat model this is an **accepted trade-off, not a trust boundary**. Server-side *shape* validation (hex, length, positive size, non-negative duration) is enforced before persisting.
+
+### WebSocket session lifecycle (largely closed)
+The WS loop authenticates at handshake. Playback-control frames now **re-validate active membership per message**, and a non-host who leaves via REST `/leave` has their socket force-closed (`manager.close_user`) — so a departed user can no longer drive chat / ready / playback. Residual: chat/ready membership is enforced via the closed socket rather than a per-frame DB check, which is acceptable at single-instance scope.
+
+### Accepted for MVP scope
+- **WS `Origin: None` allowed** — non-browser clients can omit `Origin`; the single-use, 30 s, room-bound ws-ticket is the real auth, so the Origin check is defense-in-depth against browser CSRF only.
+- **`ProxyHeadersMiddleware(trusted_hosts="*")`** — safe today because the backend binds loopback-only behind nginx (which overwrites `X-Forwarded-For`). Tighten to the proxy CIDR if the backend is ever exposed directly. Left as-is deliberately: a wrong CIDR re-collapses the per-IP rate limiter into a single bucket.
+- **In-memory `jti` blocklist + ws-ticket store** — reset on restart, so single-use guarantees hold within one process lifetime. Single-instance MVP; move to Redis for multi-instance.
+
 ### Other gaps
 - No password reset flow (requires email infra).
 - No email verification (anyone can register with any address).
-- No account lockout (rate limit only).
+- No account lockout (only rate limiting; login now counts **failed** attempts so a shared NAT isn't locked out by successful logins).
 - No HTTPS enforced inside the stack — must be terminated by an outer proxy.
 
 ## Reporting

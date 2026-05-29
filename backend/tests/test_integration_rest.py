@@ -178,6 +178,24 @@ async def test_rate_limit_on_login_per_ip(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_successful_logins_do_not_count_toward_rate_limit(client: AsyncClient):
+    """Only FAILED logins count toward the limiter, so many successful logins
+    from one IP (a shared NAT / classroom) don't lock the IP out."""
+    await client.post(
+        "/api/auth/register",
+        json={"username": "erin", "email": "erin@example.com", "password": "password123"},
+    )
+    # Well past the 10/60s budget — every one must still succeed.
+    for _ in range(15):
+        r = await client.post(
+            "/api/auth/login",
+            json={"email": "erin@example.com", "password": "password123"},
+            headers={"X-Forwarded-For": "10.0.0.5"},
+        )
+        assert r.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_create_and_join_room(client: AsyncClient):
     # Register two users
     await client.post(

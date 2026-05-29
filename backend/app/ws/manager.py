@@ -92,6 +92,40 @@ class ConnectionManager:
                 self.seq_counters.pop(room_id, None)
         return True
 
+    async def close_user(self, room_id: str, user_id: str, reason: str = "left"):
+        """Force-disconnect a single user's socket — used when they leave via
+        REST `/leave`. The WS message loop only checks membership at handshake,
+        so without this a user who left could keep an open socket and still send
+        chat / ready / playback-control frames. Tells the rest they left and
+        closes the socket. Safe no-op if the user has no active connection.
+        """
+        room = self.rooms.get(room_id)
+        entry = room.get(user_id) if room else None
+        if entry is None:
+            return
+        ws = entry[0]
+        del room[user_id]
+        # They left intentionally — drop any pending grace bookkeeping.
+        self._cancel_grace_timer(room_id, user_id)
+        self.disconnected_users.pop((room_id, user_id), None)
+        # Notify the rest (broadcast no-ops if the room is now empty).
+        await self.broadcast(room_id, {
+            "type": "user_left",
+            "user_id": user_id,
+            "reason": reason,
+        })
+        try:
+            await ws.close(code=4000)
+        except Exception:
+            pass
+        # Mirror disconnect()'s teardown if the room is now empty.
+        if not room:
+            self.rooms.pop(room_id, None)
+            self._stop_heartbeat(room_id)
+            if not self._has_grace_timers(room_id):
+                self.room_states.pop(room_id, None)
+                self.seq_counters.pop(room_id, None)
+
     def start_grace_period(
         self, room_id: str, user_id: str, is_host: bool, callback,
         was_ready: bool = False,
