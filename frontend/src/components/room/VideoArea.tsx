@@ -19,6 +19,7 @@ interface VideoAreaProps {
   roomStatus: RoomStatus;
   fileUrl: string | null;
   isHost: boolean;
+  canControl: boolean;
   connectionState: 'connected' | 'connecting' | 'reconnecting';
   hostDisconnected: boolean;
   graceCountdown: number;
@@ -36,7 +37,7 @@ interface VideoAreaProps {
     description: string;
   } | null;
   onResumePlayback: () => void;
-  onNonHostControlAttempt: () => void;
+  onBlockedControlAttempt: () => void;
   onVideoCanPlay: () => void;
   onVideoError: (errorCode: string) => void;
   onVideoPointerDown: () => void;
@@ -56,6 +57,7 @@ export function VideoArea({
   roomStatus,
   fileUrl,
   isHost,
+  canControl,
   connectionState,
   hostDisconnected,
   graceCountdown,
@@ -69,7 +71,7 @@ export function VideoArea({
   interactionHint,
   sessionNotice,
   onResumePlayback,
-  onNonHostControlAttempt,
+  onBlockedControlAttempt,
   onVideoCanPlay,
   onVideoError,
   onVideoPointerDown,
@@ -184,7 +186,7 @@ export function VideoArea({
               <VideoPlayer
                 ref={videoRef}
                 src={fileUrl}
-                isInteractive={isHost}
+                isInteractive={canControl}
                 onCanPlay={onVideoCanPlay}
                 onError={onVideoError}
                 onPointerDown={onVideoPointerDown}
@@ -252,13 +254,13 @@ export function VideoArea({
               <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
                 <PlaybackControls
                   videoRef={videoRef}
-                  isHost={isHost}
+                  canControl={canControl}
                   onPlay={onPlay}
                   onPause={onPause}
                   onSeek={onSeek}
                   videoReady={videoReady}
                   visible={controlsVisible}
-                  onNonHostControlAttempt={onNonHostControlAttempt}
+                  onBlockedControlAttempt={onBlockedControlAttempt}
                 />
               </div>
             </div>

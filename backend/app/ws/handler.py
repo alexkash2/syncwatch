@@ -1,4 +1,5 @@
 import logging
+import math
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -31,6 +32,11 @@ _msg_limiter = register_limiter_instance(RateLimiter(max_events=200, window_seco
 # A host can otherwise spam file_verify_request → file_changed broadcasts at
 # the global cap (~20 Hz). Keep changes rare.
 _verify_limiter = register_limiter_instance(RateLimiter(max_events=5, window_seconds=10))
+# Room-wide cap on playback-control mutations. Per-user buckets alone let an
+# N-participant room amplify into N×(per-user) sync_state broadcasts now that
+# anyone — not just the host — can drive playback; this bounds the shared
+# RoomState mutation/broadcast rate independently of participant count.
+_room_control_limiter = register_limiter_instance(RateLimiter(max_events=120, window_seconds=10))
 
 
 def _allowed_ws_origin(origin: str | None) -> bool:
@@ -188,7 +194,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 if restored == "playing":
                     restored = "paused"
                 state.room_status = restored
-            await manager.broadcast(room_id, {"type": "host_reconnected"})
+            # Carry the restored status so clients don't hard-code "paused" and lose
+            # a "waiting_ready" room (the autopause only forces playing→paused).
+            await manager.broadcast(room_id, {
+                "type": "host_reconnected",
+                "room_status": state.room_status if state else "paused",
+            })
 
         # Restore ready state in DB if file_version matches
         if was_ready:
@@ -482,26 +493,68 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 })
 
             elif msg_type in ("play", "pause", "seek"):
-                if user_id != host_id:
-                    await manager.send_to_user(room_id, user_id, {
-                        "type": "error", "code": "not_host", "message": "Only the host can control playback.",
-                    })
-                    continue
                 if not _control_limiter.check(f"ctrl:{user_id}"):
                     continue
                 state = manager.room_states.get(room_id)
                 if not state:
                     continue
-                # Validate file_version
+                # While the host is gone (grace window) the room is autopaused and
+                # "closing"; ignore control so a viewer can't un-pause behind the
+                # host-disconnected overlay via any input path (button/click/keyboard).
+                if state.room_status == "closing":
+                    continue
+                # No reference file selected yet (file_version 0) → there is nothing to
+                # control; reject so a client can't flip a "waiting_file" room to playing.
+                if state.file_version <= 0:
+                    continue
+                # Require an explicit, matching file_version. A custom client could
+                # otherwise omit it and drive playback against a file it already changed.
                 msg_fv = data.get("file_version")
-                if msg_fv is not None and msg_fv != state.file_version:
+                if not isinstance(msg_fv, int) or isinstance(msg_fv, bool) or msg_fv != state.file_version:
                     await manager.send_to_user(room_id, user_id, {
                         "type": "error", "code": "file_version_mismatch",
-                        "message": "Stale file version.",
+                        "message": "Stale or missing file version.",
                     })
                     continue
-
-                time_ms = data.get("current_time_ms", 0)
+                # Re-validate active membership (the handshake checked it once, but a
+                # user who left via REST /leave may still hold an open socket) and read
+                # the file duration for clamping in a single query. On a transient DB
+                # error, fail closed for THIS command without tearing down the socket.
+                try:
+                    async with async_session() as db:
+                        membership = (await db.execute(
+                            select(Room.file_duration)
+                            .join(RoomParticipant, RoomParticipant.room_id == Room.id)
+                            .where(
+                                Room.id == uuid.UUID(room_id),
+                                RoomParticipant.user_id == uuid.UUID(user_id),
+                                RoomParticipant.left_at == None,
+                            )
+                        )).first()
+                except Exception:
+                    logger.exception(
+                        "control membership check failed (room=%s user=%s)", room_id, user_id
+                    )
+                    continue
+                if membership is None:
+                    continue
+                # max(0, …): a malicious host can persist a negative file_duration via
+                # the (unvalidated) file_verify_request path; guard so the upper clamp
+                # below can't push time_ms negative and bypass the lower bound.
+                room_duration_ms = max(0, membership[0] or 0)
+                # Sanitize the target position: reject non-numeric / non-finite payloads,
+                # then clamp to [0, file_duration] so a crafted client can't poison the
+                # shared timeline (upper bound is also enforced client-side).
+                raw_time = data.get("current_time_ms", 0)
+                if isinstance(raw_time, bool) or not isinstance(raw_time, (int, float)) or not math.isfinite(raw_time):
+                    continue
+                time_ms = max(0, int(raw_time))
+                if room_duration_ms and time_ms > room_duration_ms:
+                    time_ms = room_duration_ms
+                # Room-wide cap LAST: only count messages that actually mutate/broadcast,
+                # so rejected frames from a spammer can't starve legitimate controllers.
+                if not _room_control_limiter.check(f"ctrlroom:{room_id}"):
+                    continue
                 if msg_type == "play":
                     apply_play(state, time_ms)
                 elif msg_type == "pause":

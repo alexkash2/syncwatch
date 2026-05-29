@@ -278,7 +278,14 @@ export function RoomPage() {
     [send]
   );
 
-  const showInteractionHint = useCallback((message = 'Only the host can control playback.') => {
+  // Derived before the playback callbacks below so they can close over it
+  // without a temporal-dead-zone error (they reference it in their deps).
+  // Disabled while the host is gone: the room is autopaused/"closing" during the
+  // grace window, so control affordances (buttons, keyboard, click) go inert and
+  // can't fight the host-disconnected overlay.
+  const canControl = Boolean(fileUrl) && !hostDisconnected;
+
+  const showInteractionHint = useCallback((message = 'Load your file to control playback.') => {
     if (interactionHintTimerRef.current !== null) {
       window.clearTimeout(interactionHintTimerRef.current);
     }
@@ -311,7 +318,7 @@ export function RoomPage() {
       return;
     }
 
-    if (room?.host_id !== user?.id) {
+    if (!canControl) {
       showInteractionHint();
       return;
     }
@@ -332,7 +339,7 @@ export function RoomPage() {
       send('pause', { current_time_ms: timeMs, file_version: fileVersion });
       setRoomStatus('paused');
     }
-  }, [fileVersion, room?.host_id, send, setRoomDeckOpen, setSidebarOpen, showInteractionHint, user?.id]);
+  }, [canControl, fileVersion, send, setRoomDeckOpen, setSidebarOpen, showInteractionHint]);
 
   const handlePlay = useCallback(
     (timeMs: number) => {
@@ -612,6 +619,7 @@ export function RoomPage() {
               fileUrl={fileUrl}
               videoRef={videoRef}
               isHost={Boolean(isHost)}
+              canControl={canControl}
               connectionState={connectionState}
               hostDisconnected={hostDisconnected}
               graceCountdown={graceCountdown}
@@ -625,7 +633,7 @@ export function RoomPage() {
               interactionHint={interactionHint}
               sessionNotice={sessionNotice}
               onResumePlayback={resumePlayback}
-              onNonHostControlAttempt={showInteractionHint}
+              onBlockedControlAttempt={showInteractionHint}
               onFileVerified={handleFileVerified}
               onVerifyRequest={handleVerifyRequest}
               onVideoCanPlay={handleVideoCanPlay}

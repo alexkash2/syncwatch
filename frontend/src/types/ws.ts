@@ -110,6 +110,7 @@ export interface HostDisconnectedMessage extends BaseWsMessage {
 
 export interface HostReconnectedMessage extends BaseWsMessage {
   type: 'host_reconnected';
+  room_status?: RoomStatus;
 }
 
 export interface RoomClosedMessage extends BaseWsMessage {

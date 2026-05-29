@@ -1,5 +1,88 @@
 # Changelog
 
+## 2026-05-29 — Viewer playback control (any participant can play/pause/seek)
+
+Implemented per `reviews/viewer-control-plan.md` (Sonnet → Opus self-review).
+Resolves `IDEAS.md` §1: playback is no longer host-only.
+
+**Changed:**
+
+- `backend/app/ws/handler.py` — dropped the `not_host` gate on `play/pause/seek`.
+  Authorization is now active membership (the WS handshake already verifies it);
+  the server stays authoritative and broadcasts `sync_state` to everyone. Decided
+  against a `verified_users` gate (reconnect fragility + client-spoofable hash =
+  no real boundary).
+- `frontend/src/pages/RoomPage.tsx` — `canControl = Boolean(fileUrl)` (controls
+  only render once you've loaded+verified a file); click-to-toggle gates on it.
+- `frontend/src/components/room/{PlaybackControls,VideoArea}.tsx` — `isHost` →
+  `canControl` for control affordances; neutral a11y/aria copy (no "host only").
+- `frontend/src/hooks/useRoomWsHandler.ts` — handle `file_version_mismatch`
+  (self-heals) + generic error-toast fallback so control rejections aren't silent.
+- `frontend/src/components/room/PlaybackControls.test.tsx` — new (4 tests).
+
+**Self-review (Opus):**
+
+- **P1** `RoomPage.tsx` — Sonnet placed `const canControl` *after* the
+  `handleVideoClickToggle` callback that references it in its deps → temporal-dead-zone
+  ReferenceError crashing the room on render (tsc/vitest missed it; no RoomPage
+  render test). Moved the declaration above the playback callbacks.
+
+**Review round 1 — code (`final-reviewer`) + security (`general-purpose` opus), parallel:**
+
+- **P1** (code) `handler.py` — a viewer could un-pause the room during the
+  host-disconnect grace window: the `window` keydown handler lives behind the
+  overlay and the control branch had no `"closing"` guard, so Space/arrows
+  resumed playback for everyone and left `is_playing`/`room_status` inconsistent
+  on host reconnect. Fix: server-side `if state.room_status == "closing": continue`
+  (authoritative, covers every input path) + client `canControl &&= !hostDisconnected`.
+- **P1** (security) `handler.py` — removing the host gate weaponized the known
+  post-handshake membership gap: a user who left via REST `/leave` but keeps the
+  socket open could drive everyone's playback. Fix: re-validate active membership
+  (`RoomParticipant.left_at IS NULL`) inside the control branch.
+- **P2** (security) `handler.py` — per-user rate buckets let an N-participant room
+  amplify into N×(per-user) `sync_state` broadcasts. Fix: added a room-scoped
+  control limiter (`ctrlroom:{room_id}`, 120/10s).
+- **P2** (code) — added Space-key path tests to `PlaybackControls.test.tsx`.
+- **P3** (security) `handler.py` — clamp control time to a non-negative lower bound.
+- **P3** (code) — renamed `onNonHostControlAttempt` → `onBlockedControlAttempt`
+  (the block is now "no file loaded", not "not host") across the 3 wiring sites + test.
+
+Out of scope / backlog (for Codex / follow-up): close non-host sockets on `/leave`
+to fix the membership gap for chat/ready/verify too (not just control); a WS
+integration test harness to cover the new guards end-to-end (TODO.md item).
+
+**Manual Codex round 1 (independent, user-run) — P1=0, P2=3, P3=2, all applied:**
+
+- **P2** `handler.py` — the room-wide limiter was consumed *before* the membership
+  re-check, so a departed user could burn the shared budget and starve legit
+  controllers. Reordered: room limiter runs LAST, only for messages that actually
+  mutate/broadcast.
+- **P2** `handler.py` — `file_version` was optional (only non-None mismatches
+  rejected); a custom client could omit it. Now required (must be an `int` and match).
+- **P2** `handler.py` — `current_time_ms` wasn't type/finite-checked and had no
+  server-side upper bound. Now: reject non-numeric/non-finite, clamp to
+  `[0, Room.file_duration]` (duration fetched in the same membership query).
+- **P3** `handler.py` — a transient DB error in the new membership query would
+  disconnect a legit controller (and trigger host-grace for the host). Wrapped in
+  try/except → fail-closed for that one command, socket survives.
+- **P3** `handler.py` + `ws.ts` + `useRoomWsHandler.ts` — `host_reconnected` now
+  carries the restored `room_status` so a reconnect into a `waiting_ready` room
+  isn't forced to `paused` on the client.
+
+**Manual Codex round 2 — P1=0, P2=1, P3=1, all applied (edge cases from round 1's fixes):**
+
+- **P2** `handler.py` — before a reference file is chosen `state.file_version == 0`,
+  so the new "must match" check passed `0 == 0` and a client could flip a
+  `waiting_file` room to "playing". Added an explicit `state.file_version <= 0` reject.
+- **P3** `handler.py` — a host can persist a negative `file_duration` via the
+  (unvalidated) `file_verify_request` path; the upper clamp then drove `time_ms`
+  negative. Guarded with `room_duration_ms = max(0, …)`. (Root-cause file-metadata
+  validation in `file_verify_request` left for the audit backlog — backend P3-5 /
+  security P3-2.)
+
+Gates after Codex round 2: backend pytest 61, frontend tsc + lint + vitest (29) green
+(frontend unchanged this round; build last green at round 1).
+
 ## 2026-04-20 — Deep-review fixes
 
 Third independent review (two parallel agents, no context from prior
