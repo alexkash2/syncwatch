@@ -1,5 +1,73 @@
 # Changelog
 
+## 2026-05-30 — Codex review of P3 cleanup (branch `chore/p3-cleanup`)
+
+P1=1, P2=0, P3=2 — all applied:
+
+- **P1** `requirements.txt` — removing `passlib[bcrypt]` also dropped the transitive
+  `bcrypt`, which `core/security.py` imports directly → a clean `pip install` would
+  break `import bcrypt`. Added `bcrypt>=4.0.0` as a direct dependency. (Local gates
+  had missed it: the existing venv still had bcrypt.)
+- **P3** `manager.close_user` — moved grace-cleanup + `verified_users.discard` before
+  the no-active-socket early return, so leaving *during* the grace window also drops
+  the verified flag; also discard on participant grace timeout (`handler.py`).
+- **P3** skip-to-main link hoisted to `App.tsx` (covers RoomPage, which doesn't render
+  `Layout`); removed the duplicate from `Layout`.
+- **P3 (follow-up round)** `NotFoundPage` now renders `<main id="main">` so the global
+  skip link has a target on the 404 route too. Codex then returned **APPROVED FOR MERGE**.
+
+Gates: backend pytest 74 + ruff clean; frontend tsc + lint + build + vitest 44.
+
+## 2026-05-30 — P3 cleanup (audit leftovers, branch `chore/p3-cleanup`)
+
+Closed the actionable P3s from the four audits (the infra/cosmetic ones are
+documented as deferred):
+
+- **security** — removed the unused `passlib` dependency; `close_user` now prunes
+  the departed user from `RoomState.verified_users`.
+- **backend** — `ConnectionManager` swallow-points now `logger.debug(..., exc_info=True)`
+  instead of bare `pass`; commented the intentional `playback_rate = 1.0` reset in `apply_play`.
+- **a11y** — skip-to-main-content link + `id="main"` (Layout & RoomPage), a visually
+  hidden `<h1>` on the room screen, `role="menu"` on the user dropdown.
+- **frontend** — defensive empty-username guard in `ParticipantList`; explicit
+  `seqForReconnect` capture in `useWebSocket` (read-before-reset clarity).
+
+Deferred (documented): python-jose→PyJWT migration, large-file hashing path,
+ErrorBoundary→Sentry, SECRET_KEY default behavior, and assorted cosmetic items.
+
+Gates: backend pytest 74 + ruff clean; frontend tsc + lint + build + vitest 44.
+
+## 2026-05-30 — Codex audit review, round 2 (branch `audit/p1-p2-fixes`)
+
+P1=0, P2=0 (round-1's three blockers confirmed closed), P3=1 — applied:
+
+- **P3** `auth.py` — a transient non-credential error in `login_user()` (e.g. a DB
+  blip) left both reserved limiter slots counted, so repeated 500s could briefly
+  lock out a legitimate user. Now release both slots on non-`BadRequestError`
+  exceptions; invalid-credential failures still count. Added a regression test
+  (`test_transient_login_error_releases_rate_limit_slots`).
+
+Gates: backend pytest 74 + ruff clean; frontend vitest 44.
+
+## 2026-05-30 — Codex audit review, round 1 (branch `audit/p1-p2-fixes`)
+
+Independent Codex pass over the audit branch (`reviews/codex-prompt-audit.md`).
+P1=1, P2=2, P3=2 — all applied:
+
+- **P1** login limiter was peek-then-record → a burst of concurrent bad logins
+  could bypass the cap. Now reserves atomically (`check()`) before auth and
+  releases on success (`RateLimiter.release()`).
+- **P2** reconnect snapshot was tagged with the stale local file_version → resync
+  no-op'd; the synthetic sync_state now carries `file_version` and useVideoSync
+  compares versions only at apply time.
+- **P2** queued chat/ready frames could process after `/leave`; added a
+  connection-identity check at the top of the WS loop.
+- **P3** `max_keys` was a soft cap → `_ensure_capacity()` now evicts oldest when full.
+- **P3** added `tests/test_rate_limit.py` (direct limiter unit tests) + frontend
+  regression tests for the reconnect snapshot-version fix.
+
+Gates: backend pytest 73 + ruff clean; frontend vitest 44.
+
 ## 2026-05-30 — Test coverage + CI lint (branch `test/coverage-ci`)
 
 Closed the biggest coverage gap (the WS layer had zero e2e tests) and made the

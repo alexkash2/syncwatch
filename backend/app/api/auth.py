@@ -61,21 +61,35 @@ async def login(
     body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)
 ):
     # Rate-limit by source IP *and* by target email, so one IP can't brute many
-    # accounts and one account can't be brute-forced from many IPs. Only FAILED
-    # logins are counted (peek up front, record on failure) — otherwise a shared
-    # NAT (e.g. a classroom) where successful logins burn the per-IP budget would
-    # lock everyone out. The email key is normalized identically to the lookup
+    # accounts and one account can't be brute-forced from many IPs. We RESERVE a
+    # slot atomically before auth (check() records under the lock) so a burst of
+    # concurrent bad logins can't all slip past a peek() before any record() lands.
+    # A *successful* login releases its reservation, so only FAILED attempts
+    # ultimately count — a shared NAT (e.g. a classroom) isn't locked out by
+    # legitimate logins. The email key is normalized identically to the lookup
     # (`strip().lower()`) so casing/whitespace variants can't mint fresh buckets.
     ip_key = _client_key(request)
     email_key = f"email:{body.email.strip().lower()}"
-    if not login_limiter.peek(ip_key) or not login_limiter.peek(email_key):
+    if not login_limiter.check(ip_key):
+        _raise_rate_limited()
+    if not login_limiter.check(email_key):
+        login_limiter.release(ip_key)  # don't burn the IP slot on an email-bucket 429
         _raise_rate_limited()
     try:
-        return await login_user(db, body.email, body.password)
+        result = await login_user(db, body.email, body.password)
     except BadRequestError:
-        login_limiter.record(ip_key)
-        login_limiter.record(email_key)
+        # Invalid credentials / disabled account — a real failed attempt, so the
+        # reservation stays counted.
         raise
+    except Exception:
+        # Transient non-credential failure (e.g. a DB error): don't penalize the
+        # user — give both reserved slots back so repeated 500s can't lock them out.
+        login_limiter.release(ip_key)
+        login_limiter.release(email_key)
+        raise
+    login_limiter.release(ip_key)
+    login_limiter.release(email_key)
+    return result
 
 
 @router.post("/refresh", response_model=TokenResponse)

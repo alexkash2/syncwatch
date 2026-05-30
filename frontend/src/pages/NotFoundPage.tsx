@@ -16,7 +16,7 @@ export function NotFoundPage() {
         <div className="absolute bottom-[8%] right-[10%] h-72 w-72 rounded-full border border-primary/10 bg-primary/8 blur-3xl" />
       </div>
 
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-5 py-10">
+      <main id="main" className="relative z-10 flex min-h-screen items-center justify-center px-5 py-10">
         <Panel variant="glass" padding="lg" className="w-full max-w-5xl rounded-[2.4rem]">
           <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
             <div>
@@ -74,7 +74,7 @@ export function NotFoundPage() {
             </div>
           </div>
         </Panel>
-      </div>
+      </main>
     </div>
   );
 }

@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
 
 from fastapi import WebSocket
+
+logger = logging.getLogger("syncwatch.ws.manager")
 
 HOST_GRACE_PERIOD_S = 30
 PARTICIPANT_GRACE_PERIOD_S = 60
@@ -99,15 +102,23 @@ class ConnectionManager:
         chat / ready / playback-control frames. Tells the rest they left and
         closes the socket. Safe no-op if the user has no active connection.
         """
+        # Do leave bookkeeping FIRST, regardless of whether a live socket exists:
+        # a user can disconnect into the grace window and *then* call /leave (no
+        # active socket), and they must still lose their grace timer and verified
+        # flag — otherwise a same-version rejoin would pass the ready gate without
+        # re-proving file identity.
+        self._cancel_grace_timer(room_id, user_id)
+        self.disconnected_users.pop((room_id, user_id), None)
+        state = self.room_states.get(room_id)
+        if state is not None:
+            state.verified_users.discard(user_id)
+
         room = self.rooms.get(room_id)
         entry = room.get(user_id) if room else None
         if entry is None:
-            return
+            return  # no live socket to close / announce
         ws = entry[0]
         del room[user_id]
-        # They left intentionally — drop any pending grace bookkeeping.
-        self._cancel_grace_timer(room_id, user_id)
-        self.disconnected_users.pop((room_id, user_id), None)
         # Notify the rest (broadcast no-ops if the room is now empty).
         await self.broadcast(room_id, {
             "type": "user_left",
@@ -117,7 +128,7 @@ class ConnectionManager:
         try:
             await ws.close(code=4000)
         except Exception:
-            pass
+            logger.debug("ws send failed", exc_info=True)
         # Mirror disconnect()'s teardown if the room is now empty.
         if not room:
             self.rooms.pop(room_id, None)
@@ -184,7 +195,7 @@ class ConnectionManager:
             try:
                 await ws.send_json(message)
             except Exception:
-                pass
+                logger.debug("ws send failed", exc_info=True)
 
     async def send_to_user(self, room_id: str, user_id: str, message: dict):
         # Bail before _next_seq so a message to an absent user can't re-create an
@@ -197,7 +208,7 @@ class ConnectionManager:
         try:
             await entry[0].send_json(message)
         except Exception:
-            pass
+            logger.debug("ws send failed", exc_info=True)
 
     def get_room_users(self, room_id: str) -> list[str]:
         return list(self.rooms.get(room_id, {}).keys())
@@ -268,7 +279,7 @@ class ConnectionManager:
             try:
                 await ws.close(code=4000)
             except Exception:
-                pass
+                logger.debug("ws send failed", exc_info=True)
         self.room_states.pop(room_id, None)
         self.seq_counters.pop(room_id, None)
 

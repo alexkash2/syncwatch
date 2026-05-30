@@ -196,6 +196,31 @@ async def test_successful_logins_do_not_count_toward_rate_limit(client: AsyncCli
 
 
 @pytest.mark.asyncio
+async def test_transient_login_error_releases_rate_limit_slots(client: AsyncClient, monkeypatch):
+    """A non-credential failure (e.g. a DB blip) must release its reserved slots,
+    so a burst of 500s can't lock a legitimate user out of logging in."""
+    import app.api.auth as auth_mod
+    from app.core.rate_limit import login_limiter
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("transient db error")
+
+    monkeypatch.setattr(auth_mod, "login_user", boom)
+
+    for _ in range(15):  # well past the 10/60s cap
+        with pytest.raises(RuntimeError):
+            await client.post(
+                "/api/auth/login",
+                json={"email": "ghost@example.com", "password": "whatever123"},
+                headers={"X-Forwarded-For": "10.0.0.200"},
+            )
+
+    # The email bucket (deterministic key) must still have headroom — every
+    # transient failure gave its slot back.
+    assert login_limiter.peek("email:ghost@example.com") is True
+
+
+@pytest.mark.asyncio
 async def test_create_and_join_room(client: AsyncClient):
     # Register two users
     await client.post(

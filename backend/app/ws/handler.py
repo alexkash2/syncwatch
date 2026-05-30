@@ -276,6 +276,17 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     try:
         while True:
             data = await websocket.receive_json()
+
+            # Stop if this connection was revoked while frames were queued: a user
+            # who left via REST /leave has their socket removed by close_user, and a
+            # new tab replaces the entry's connection_id. Re-checking the live
+            # connection here keeps already-queued chat/ready/verify frames from
+            # mutating or broadcasting on behalf of a departed/replaced connection
+            # (membership is only validated at handshake otherwise).
+            active = manager.rooms.get(room_id, {}).get(user_id)
+            if active is None or active[1] != connection_id:
+                break
+
             msg_type = data.get("type")
 
             # Global per-user WS message cap. Drop silently once exceeded so we
@@ -733,6 +744,11 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                             from sqlalchemy import func as sa_func
                             p.left_at = sa_func.now()
                             await db.commit()
+                    # Grace expired without reconnect → they're gone; drop their
+                    # verified flag so a later rejoin must re-prove file identity.
+                    timed_out_state = manager.room_states.get(room_id)
+                    if timed_out_state is not None:
+                        timed_out_state.verified_users.discard(user_id)
                     # Clean up room state if no more grace timers
                     if not manager._has_grace_timers(room_id) and room_id not in manager.rooms:
                         manager.room_states.pop(room_id, None)

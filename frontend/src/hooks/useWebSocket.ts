@@ -91,11 +91,15 @@ export function useWebSocket({
         setIsConnected(true);
         setIsReconnecting(false);
 
+        // Capture before the reset below so the reconnect payload uses the
+        // last seq from the previous socket, not the cleared value.
+        const seqForReconnect = lastSeqRef.current ?? 0;
+
         if (hasConnectedRef.current) {
           nextWebSocket.send(
             JSON.stringify({
               type: 'reconnect',
-              last_seq: lastSeqRef.current ?? 0,
+              last_seq: seqForReconnect,
               file_version: fileVersionRef.current,
             })
           );

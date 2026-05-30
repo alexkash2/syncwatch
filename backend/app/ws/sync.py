@@ -16,6 +16,7 @@ def apply_play(state: RoomState, current_time_ms: int) -> None:
     state.is_playing = True
     state.current_time_ms = current_time_ms
     state.last_update_epoch = time.monotonic()
+    # Reset to 1.0 intentionally: a fresh play is authoritative and cancels any in-flight drift nudge.
     state.playback_rate = 1.0
     if state.room_status in ("waiting_ready", "paused"):
         state.room_status = "playing"

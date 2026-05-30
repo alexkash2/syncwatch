@@ -176,4 +176,32 @@ describe('useRoomWsHandler', () => {
       expect.objectContaining({ type: 'sync_state', is_playing: true })
     );
   });
+
+  it('room_state routes a synthetic sync_state tagged with the room file_version', () => {
+    const opts = makeOptions();
+    const { result } = renderHook(() => useRoomWsHandler(opts));
+
+    act(() => {
+      result.current({
+        type: 'room_state',
+        participants: [],
+        playback_state: { is_playing: true, current_time_ms: 4000, playback_rate: 1 },
+        file_info: {
+          file_hash: null,
+          file_size: null,
+          file_duration_ms: null,
+          file_name: null,
+          file_version: 3,
+        },
+        room_status: 'waiting_ready',
+        file_version: 3,
+      });
+    });
+
+    // The snapshot must be tagged with the room's version (3), not the stale
+    // local fileVersion, so the reconnect resync applies once the video loads.
+    expect(opts.onSyncMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'sync_state', file_version: 3 })
+    );
+  });
 });

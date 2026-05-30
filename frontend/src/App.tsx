@@ -14,6 +14,15 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
+        {/* Global skip link — first focusable element on every route (each page
+            renders its own <main id="main">: Layout for standard pages, RoomPage
+            for the room). */}
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-surface focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-surface focus:shadow-lg focus:outline-none"
+        >
+          Skip to main content
+        </a>
         <Routes>
           <Route
             path="/login"
