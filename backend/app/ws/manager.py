@@ -102,19 +102,23 @@ class ConnectionManager:
         chat / ready / playback-control frames. Tells the rest they left and
         closes the socket. Safe no-op if the user has no active connection.
         """
-        room = self.rooms.get(room_id)
-        entry = room.get(user_id) if room else None
-        if entry is None:
-            return
-        ws = entry[0]
-        del room[user_id]
-        # They left intentionally — drop any pending grace bookkeeping.
+        # Do leave bookkeeping FIRST, regardless of whether a live socket exists:
+        # a user can disconnect into the grace window and *then* call /leave (no
+        # active socket), and they must still lose their grace timer and verified
+        # flag — otherwise a same-version rejoin would pass the ready gate without
+        # re-proving file identity.
         self._cancel_grace_timer(room_id, user_id)
         self.disconnected_users.pop((room_id, user_id), None)
-        # Drop verified flag so a re-join must re-prove file identity.
         state = self.room_states.get(room_id)
         if state is not None:
             state.verified_users.discard(user_id)
+
+        room = self.rooms.get(room_id)
+        entry = room.get(user_id) if room else None
+        if entry is None:
+            return  # no live socket to close / announce
+        ws = entry[0]
+        del room[user_id]
         # Notify the rest (broadcast no-ops if the room is now empty).
         await self.broadcast(room_id, {
             "type": "user_left",

@@ -7,6 +7,7 @@ pydantic>=2.0.0
 pydantic-settings>=2.0.0
 email-validator>=2.0.0
 python-jose[cryptography]>=3.3.0
+bcrypt>=4.0.0  # used directly by core/security.py (previously pulled in via passlib[bcrypt])
 python-multipart>=0.0.9
 websockets>=12.0
 pytest>=8.0.0

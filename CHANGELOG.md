@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-05-30 — Codex review of P3 cleanup (branch `chore/p3-cleanup`)
+
+P1=1, P2=0, P3=2 — all applied:
+
+- **P1** `requirements.txt` — removing `passlib[bcrypt]` also dropped the transitive
+  `bcrypt`, which `core/security.py` imports directly → a clean `pip install` would
+  break `import bcrypt`. Added `bcrypt>=4.0.0` as a direct dependency. (Local gates
+  had missed it: the existing venv still had bcrypt.)
+- **P3** `manager.close_user` — moved grace-cleanup + `verified_users.discard` before
+  the no-active-socket early return, so leaving *during* the grace window also drops
+  the verified flag; also discard on participant grace timeout (`handler.py`).
+- **P3** skip-to-main link hoisted to `App.tsx` (covers RoomPage, which doesn't render
+  `Layout`); removed the duplicate from `Layout`.
+
+Gates: backend pytest 74 + ruff clean; frontend tsc + lint + build + vitest 44.
+
 ## 2026-05-30 — P3 cleanup (audit leftovers, branch `chore/p3-cleanup`)
 
 Closed the actionable P3s from the four audits (the infra/cosmetic ones are

@@ -4,12 +4,7 @@ import { Header } from './Header';
 export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-surface text-on-surface">
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-surface focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-surface focus:shadow-lg focus:outline-none"
-      >
-        Skip to main content
-      </a>
+      {/* Skip link is rendered once globally in App.tsx (covers RoomPage too). */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(180,197,255,0.12),transparent_24%),linear-gradient(180deg,#0a0a0a_0%,#131313_42%,#171717_100%)]" />
         <div className="absolute left-[-8rem] top-20 h-72 w-72 rounded-full border border-primary-container/10 bg-primary-container/10 blur-3xl" />
