@@ -13,6 +13,8 @@ P1=1, P2=0, P3=2 — all applied:
   the verified flag; also discard on participant grace timeout (`handler.py`).
 - **P3** skip-to-main link hoisted to `App.tsx` (covers RoomPage, which doesn't render
   `Layout`); removed the duplicate from `Layout`.
+- **P3 (follow-up round)** `NotFoundPage` now renders `<main id="main">` so the global
+  skip link has a target on the 404 route too. Codex then returned **APPROVED FOR MERGE**.
 
 Gates: backend pytest 74 + ruff clean; frontend tsc + lint + build + vitest 44.
 
