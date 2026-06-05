@@ -33,7 +33,6 @@ describe('PlaybackControls', () => {
         onPause={onPause}
         onSeek={vi.fn()}
         videoReady={true}
-        visible={true}
       />
     );
 
@@ -57,7 +56,6 @@ describe('PlaybackControls', () => {
         onPause={onPause}
         onSeek={vi.fn()}
         videoReady={true}
-        visible={true}
         onBlockedControlAttempt={onBlockedControlAttempt}
       />
     );
@@ -81,7 +79,6 @@ describe('PlaybackControls', () => {
         onPause={vi.fn()}
         onSeek={vi.fn()}
         videoReady={true}
-        visible={true}
       />
     );
 
@@ -103,7 +100,6 @@ describe('PlaybackControls', () => {
         onPause={vi.fn()}
         onSeek={vi.fn()}
         videoReady={true}
-        visible={true}
         onBlockedControlAttempt={onBlockedControlAttempt}
       />
     );
@@ -125,7 +121,6 @@ describe('PlaybackControls', () => {
         onPause={vi.fn()}
         onSeek={vi.fn()}
         videoReady={true}
-        visible={true}
       />
     );
 
@@ -143,10 +138,70 @@ describe('PlaybackControls', () => {
         onPause={vi.fn()}
         onSeek={vi.fn()}
         videoReady={true}
-        visible={true}
       />
     );
 
     expect(screen.getByRole('slider', { name: /playback position/i })).not.toBeDisabled();
+  });
+
+  it('commits keyboard seek changes through onSeek before moving the video element', () => {
+    const videoRef = makeVideoRef(true);
+    const video = videoRef.current as HTMLVideoElement;
+    // Assert ordering INSIDE the send: the element must not have moved yet when
+    // onSeek is invoked (send-first), so a reordered impl can't pass this test.
+    const onSeek = vi.fn(() => {
+      expect(video.currentTime).toBe(0);
+      return true;
+    });
+
+    render(
+      <PlaybackControls
+        videoRef={videoRef}
+        canControl={true}
+        onPlay={vi.fn()}
+        onPause={vi.fn()}
+        onSeek={onSeek}
+        videoReady={true}
+      />
+    );
+
+    const slider = screen.getByRole('slider', { name: /playback position/i });
+    fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    fireEvent.change(slider, { target: { value: '9.5' } });
+
+    expect(onSeek).not.toHaveBeenCalled();
+    expect(video.currentTime).toBe(0);
+
+    fireEvent.keyUp(slider, { key: 'ArrowRight' });
+
+    expect(onSeek).toHaveBeenCalledWith(9500);
+    expect(video.currentTime).toBe(9.5);
+  });
+
+  it('reverts keyboard seek changes when onSeek rejects the command', () => {
+    const onSeek = vi.fn(() => false);
+    const videoRef = makeVideoRef(true);
+    const video = videoRef.current as HTMLVideoElement;
+    video.currentTime = 4;
+
+    render(
+      <PlaybackControls
+        videoRef={videoRef}
+        canControl={true}
+        onPlay={vi.fn()}
+        onPause={vi.fn()}
+        onSeek={onSeek}
+        videoReady={true}
+      />
+    );
+
+    const slider = screen.getByRole('slider', { name: /playback position/i }) as HTMLInputElement;
+    fireEvent.keyDown(slider, { key: 'End' });
+    fireEvent.change(slider, { target: { value: '90' } });
+    fireEvent.keyUp(slider, { key: 'End' });
+
+    expect(onSeek).toHaveBeenCalledWith(90000);
+    expect(video.currentTime).toBe(4);
+    expect(slider.value).toBe('4');
   });
 });

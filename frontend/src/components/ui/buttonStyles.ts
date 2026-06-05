@@ -1,42 +1,48 @@
 import { cn } from './cn';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonStyleOptions {
   variant?: ButtonVariant;
   size?: ButtonSize;
   fullWidth?: boolean;
+  iconOnly?: boolean;
   className?: string;
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary:
-    'border border-primary-container/40 bg-gradient-to-r from-primary-container to-[#0053da] text-on-primary-container shadow-[0_14px_32px_rgba(0,98,255,0.28)] hover:brightness-110',
-  secondary:
-    'border border-outline-variant/18 bg-surface-container-lowest/75 text-on-surface hover:border-primary-container/35 hover:bg-surface-container-high/40',
-  ghost:
-    'border border-outline-variant/16 bg-black/18 text-on-surface-variant hover:border-primary-container/35 hover:text-on-surface',
-  danger:
-    'border border-error/30 bg-error-container/38 text-on-surface hover:bg-error-container/60',
+  primary: 'bg-accent text-white shadow-[0_1px_2px_rgba(16,23,20,0.08)] hover:bg-accent-strong',
+  secondary: 'bg-ink text-white hover:bg-[#1d2722]',
+  outline:
+    'border-line-2 bg-surface text-ink shadow-[0_1px_2px_rgba(16,23,20,0.05)] hover:border-ink-4 hover:bg-surface-2',
+  ghost: 'bg-transparent text-ink-2 hover:bg-surface-3 hover:text-ink',
+  danger: 'bg-danger-tint text-danger hover:bg-[#f8dcdd]',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  sm: 'px-3.5 py-2 text-[11px] tracking-[0.18em]',
-  md: 'px-4.5 py-3 text-[11px] tracking-[0.2em]',
-  lg: 'px-5 py-4 text-xs tracking-[0.22em]',
+  sm: 'h-[34px] rounded-[8px] px-3 text-[13px]',
+  md: 'h-10 rounded-[10px] px-4 text-sm',
+  lg: 'h-12 rounded-[14px] px-[22px] text-[15px]',
+};
+
+const iconOnlySizeClasses: Record<ButtonSize, string> = {
+  sm: 'h-[34px] w-[34px] rounded-[8px] px-0',
+  md: 'h-10 w-10 rounded-[10px] px-0',
+  lg: 'h-12 w-12 rounded-[14px] px-0',
 };
 
 export function buttonStyles({
-  variant = 'secondary',
+  variant = 'primary',
   size = 'md',
   fullWidth = false,
+  iconOnly = false,
   className,
 }: ButtonStyleOptions = {}) {
   return cn(
-    'inline-flex items-center justify-center gap-2 rounded-full font-bold uppercase transition disabled:cursor-not-allowed disabled:opacity-50',
+    'inline-flex select-none items-center justify-center gap-2 whitespace-nowrap border border-transparent font-semibold leading-none -tracking-[0.01em] transition active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55',
     variantClasses[variant],
-    sizeClasses[size],
+    iconOnly ? iconOnlySizeClasses[size] : sizeClasses[size],
     fullWidth && 'w-full',
     className
   );

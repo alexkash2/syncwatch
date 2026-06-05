@@ -9,6 +9,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   fullWidth?: boolean;
+  iconOnly?: boolean;
   leadingIcon?: ReactNode;
   trailingIcon?: ReactNode;
 }
@@ -16,9 +17,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
     {
-      variant = 'secondary',
+      variant = 'primary',
       size = 'md',
       fullWidth = false,
+      iconOnly = false,
       leadingIcon,
       trailingIcon,
       className,
@@ -32,7 +34,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         type={type}
-        className={buttonStyles({ variant, size, fullWidth, className })}
+        className={buttonStyles({ variant, size, fullWidth, iconOnly, className })}
         {...props}
       >
         {leadingIcon}

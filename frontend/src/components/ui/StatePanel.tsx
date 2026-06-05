@@ -5,11 +5,11 @@ import { Panel } from './Panel';
 export type StateTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
 
 const iconToneClasses: Record<StateTone, string> = {
-  neutral: 'border-outline-variant/18 bg-black/24 text-on-surface-variant',
-  primary: 'border-primary-container/22 bg-primary-container/10 text-primary',
-  success: 'border-emerald-400/22 bg-emerald-400/10 text-emerald-200',
-  warning: 'border-amber-300/22 bg-amber-300/10 text-amber-100',
-  danger: 'border-error/24 bg-error-container/38 text-error',
+  neutral: 'bg-surface-3 text-ink-3',
+  primary: 'bg-accent-tint text-accent-strong',
+  success: 'bg-accent-tint text-accent-strong',
+  warning: 'bg-warning-tint text-warning',
+  danger: 'bg-danger-tint text-danger',
 };
 
 interface StatePanelProps extends ComponentPropsWithoutRef<'div'> {
@@ -37,19 +37,15 @@ export function StatePanel({
 
   return (
     <Panel
-      variant="outline"
-      padding="md"
-      className={cn(
-        'rounded-[1.7rem] border-outline-variant/16 bg-surface-container-low/68',
-        isCentered ? 'text-center' : '',
-        className
-      )}
+      variant="default"
+      padding="lg"
+      className={cn(isCentered ? 'text-center' : '', className)}
       {...props}
     >
       {icon && (
         <div
           className={cn(
-            'flex h-14 w-14 items-center justify-center rounded-[1.2rem] border shadow-[0_16px_40px_rgba(0,0,0,0.16)]',
+            'flex h-14 w-14 items-center justify-center rounded-[14px]',
             iconToneClasses[tone],
             isCentered ? 'mx-auto' : ''
           )}
@@ -60,12 +56,12 @@ export function StatePanel({
 
       <div className={cn(icon ? 'mt-4' : '', isCentered ? 'mx-auto max-w-md' : 'max-w-xl')}>
         {eyebrow && (
-          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
+          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-strong">
             {eyebrow}
           </p>
         )}
-        <h3 className="mt-2 text-2xl font-black tracking-tight text-on-surface">{title}</h3>
-        <p className="mt-3 text-sm leading-7 text-on-surface-variant">{description}</p>
+        <h3 className="mt-2 text-2xl font-bold -tracking-[0.02em] text-ink">{title}</h3>
+        <p className="mt-3 text-sm leading-7 text-ink-2">{description}</p>
       </div>
 
       {actions && (

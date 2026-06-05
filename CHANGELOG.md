@@ -1,5 +1,108 @@
 # Changelog
 
+## 2026-06-04 — Frontend redesign: light/emerald port (branch `redesign/frontend-emerald`)
+
+Ported the new design prototype (`newdesign_extracted/`, light minimalism · emerald
+accent · Space Grotesk/JetBrains Mono) 1:1 onto the real stack, keeping **all** the
+existing backend wiring (REST + WebSocket sync) untouched. The presentational layer
+was rebuilt; the WS/sync hooks, zustand store, API client and types are unchanged.
+
+Done in 4 reviewed chunks (each: tsc + eslint + build + vitest green):
+
+- **Foundation** — replaced `index.css` `@theme` with the light/emerald token set
+  (accent/ink/line/stage…), added Google Fonts, scrubber/range styles, pseudo-FS
+  helper. New custom EN/PL i18n (`src/i18n/`, `useI18n`) — a first-class in-app
+  toggle persisted to `sw-lang`; no new dependency. Restyled the shared primitives
+  (Button +outline/iconOnly, Panel, Badge +accent/ink/dot, Input/Field, Toast,
+  ConfirmDialog, StatePanel) and added design primitives (CodeChip, Segmented,
+  LangToggle, IconField, Spinner). Used transient legacy-token aliases to keep the
+  build green file-by-file, then removed them once grep hit zero.
+- **Home / auth** — new `TopBar`, `GuestHome` (minimal landing), `Dashboard`
+  (workspace: New room + Join by code + "Your rooms" list with role avatars, file
+  status, copy-code, open, delete). Adaptive `/` (guest landing vs dashboard, gated
+  on `isLoading`). Auth modal restyled (icon fields, show/hide pw, mobile bottom
+  sheet). Arrival notices (room closed/gone) now surface as a localized **toast**
+  keyed off `notice.key` (no big banner). 404 rebuilt.
+- **Room (desktop)** — `RoomHeader` (always-visible centre room code + connection
+  dot + N/total ready + lang + Leave/"Close room"), `VideoArea` (dark stage +
+  filename chip + centre play glyph + autoplay/host-away/reconnecting overlays),
+  `PlaybackControls` player bar (scrubber, ±5s, big play, time, volume, fullscreen),
+  `FileSelector` redrawn as in-stage select/verify/mismatch states (hashing + verify
+  state machine byte-identical), `RoomSidebar` (Segmented Chat/People), `ChatPanel`
+  (own-right accent bubbles), `ParticipantList`. Playback is available to **every**
+  participant (backend permits it; only the host closes the room).
+- **Room (mobile) + cleanup** — `useIsMobile` (≤760) drives a separate mobile room
+  (16:9 strip + compact header + player bar + underline Chat/People tabs). Device-
+  aware fullscreen (`useFullscreen`): real Fullscreen API for desktop/Android/iPad/
+  macOS, CSS pseudo-fullscreen for iPhone (Fullscreen API unavailable on a `<div>`
+  there); `playsInline` kept. Deleted the cut features: Preferences/Settings
+  (context, hook, dialog, toggle card), marketing `BrandIllustration`, `RoomOnboarding`,
+  `HostDisconnectOverlay`, old drawer `Header`/`RoomTabs`, `types/preferences`.
+  Removed the unused `@vitejs/plugin-basic-ssl` dep.
+
+Visual check (Playwright): guest landing, auth modal (desktop + mobile bottom sheet)
+and 404 match the prototype. Dashboard/room live check pending the backend stack.
+
+**Review round** — independent Opus code review returned **APPROVED FOR MERGE**
+(P1=0, P2=0): all WS/sync wiring confirmed preserved, i18n keys type-enforced, token
+migration fully resolved. Applied the review + a11y advisories that don't alter the
+design: iPhone pseudo-fullscreen now force-exits when the file is cleared
+(`useFullscreen.exit`); ARIA tabs pattern on Segmented + MobileTabs (roving tabindex,
+arrow keys, `aria-controls`/`aria-labelledby`); StageOverlay labelled; redundant
+toast `role` dropped; spinners use the labelled `Spinner`. Known caveat (design-
+inherent, left for fidelity): white-on-emerald buttons and some faint meta text are
+below WCAG AA contrast — flagged for a later accent-darkening pass if desired.
+
+**Codex round 1** — 3×P2 + 1×P3, all fixed (socket-drop drift / clipboard edge cases):
+- P2 `FileSelector` — a hash that resolves *after* the selector unmounts could
+  `createObjectURL` with no owner to revoke it → leak. The unmount cleanup now bumps
+  `requestNonce` so the in-flight guard short-circuits before `createObjectURL`.
+- P2 `FileSelector`/`RoomPage` — `file_verify_request` ignored `send()` failing, so a
+  pick during a socket drop wedged the selector in `verifying` forever. `onVerifyRequest`
+  now returns the send result; on failure the selector reverts to an actionable `idle`.
+- P2 `PlaybackControls`/`RoomPage` — play/pause mutated the local `<video>` before knowing
+  the WS command landed, drifting this client while disconnected. Both paths now send
+  first and only `play()/pause()` (and flip `roomStatus`) when `send()` succeeds.
+- P3 `CodeChip` — reported "Copied" without awaiting the clipboard write. Now `await`s
+  `writeText`; success → checkmark + `onCopy`, failure → new `onError` (warning toast).
+
+**Codex round 2** — round-1 fixes confirmed correct; 2×P2 + 1×P3 more, all fixed:
+- P2 `PlaybackControls` — seek (±5s + scrubber) still moved the local `<video>` before the
+  WS `seek` was accepted. `onSeek` is now `=> boolean`; skip/scrubber send first and only
+  set `currentTime` on success, reverting the scrubber to the real position on failure.
+- P2 `FileSelector` — the one-shot persistent auto-restore could be burned while the socket
+  was still connecting (verify send fails, `restoredFileKeyRef` already set → never retries).
+  Now gated on a new `socketReady` prop so it fires only once the room socket is open.
+- P3 `Dashboard` — the desktop room-row `CodeChip` was missing the `onError` callback (only
+  the mobile row had it). Wired `onError={onCopyError}` so a denied clipboard shows a toast.
+
+**Codex round 3** — 1×P2, fixed: the native `<input type=range>` scrubber's own keyboard
+(arrows/Home/End on focus) changed the value via `onChange` but never committed a seek or
+moved the element. Added a `seekInteractionActiveRef` interaction guard + `keydown`/`keyup`
+handlers on the scrubber so keyboard edits commit through the same send-first `handleSeekEnd`
+(move on success, snap back on reject), with double-send guarded. +2 regression tests
+(keyboard seek commit + reject). Suite now 44.
+
+**Codex round 4** — 2×P2 + 1×P3 (follow-ons from the round-2/3 fixes), all fixed:
+- P2 `PlaybackControls` — `handleSeekStart` marked an interaction active without seeding
+  `seekValueRef`, so an interaction with no change event (thumb click without moving, arrow
+  at a boundary) committed a stale ref (often 0) and jerked the video to the start. Now seeds
+  `seekValueRef` from the live `video.currentTime` at interaction start.
+- P2 `FileSelector` — under React StrictMode the auto-restore was burned: setup marked
+  `restoredFileKeyRef`, the StrictMode cleanup cancelled, and the second setup bailed on the
+  already-marked key → restore never ran. Now the key is marked only inside the resolved
+  `restoreRoomFile` callback (when `!cancelled && restored`), so StrictMode's second pass
+  proceeds.
+- P3 `PlaybackControls.test` — the keyboard-seek test didn't assert ordering; it now asserts
+  inside the `onSeek` mock that `video.currentTime` is still the old value when the send fires,
+  so a reordered (mutate-before-send) impl fails.
+
+**Codex round 5** — verified the round-4 fixes; no new findings → **APPROVED FOR MERGE**.
+Codex loop closed clean after 5 rounds (11 issues total, all P2/P3 around socket-drop drift
+and clipboard/StrictMode edge cases — zero P1).
+
+Gates: frontend tsc + eslint + build + vitest 44 — all green.
+
 ## 2026-05-30 — Codex review of P3 cleanup (branch `chore/p3-cleanup`)
 
 P1=1, P2=0, P3=2 — all applied:

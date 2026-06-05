@@ -1,7 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { Button } from './Button';
-import { Panel } from './Panel';
-import { WarningCircleIcon, XIcon } from './icons';
 
 type ConfirmTone = 'primary' | 'warning' | 'danger';
 
@@ -19,12 +17,6 @@ interface ConfirmDialogProps extends ConfirmDialogConfig {
   onConfirm: () => void;
   onCancel: () => void;
 }
-
-const iconToneClasses: Record<ConfirmTone, string> = {
-  primary: 'border-primary-container/28 bg-primary-container/10 text-primary',
-  warning: 'border-amber-300/26 bg-amber-300/10 text-amber-100',
-  danger: 'border-error/30 bg-error-container/35 text-error',
-};
 
 export function ConfirmDialog({
   open,
@@ -95,65 +87,52 @@ export function ConfirmDialog({
   }
 
   return (
-    <div className="ui-overlay-enter fixed inset-0 z-[120] flex items-end justify-center bg-black/72 p-4 backdrop-blur-md sm:items-center sm:p-6">
-      <Panel
+    <div
+      className="sw-fade fixed inset-0 z-[150] flex items-center justify-center bg-[rgba(15,23,20,0.28)] p-6 backdrop-blur-[3px]"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onCancel();
+        }
+      }}
+    >
+      <div
         ref={dialogRef}
-        variant="glass"
-        padding="lg"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-description"
         tabIndex={-1}
-        className="ui-dialog-enter relative w-full max-w-lg rounded-[2rem]"
+        className="sw-scale-in w-full max-w-[400px] rounded-[18px] border border-line bg-surface p-[30px] shadow-[0_18px_48px_rgba(16,23,20,0.12)]"
       >
-        <button
-          type="button"
-          onClick={onCancel}
-          className="absolute right-4 top-4 rounded-full border border-outline-variant/16 bg-black/18 p-2 text-on-surface-variant transition hover:border-primary-container/35 hover:text-on-surface"
-          aria-label="Close confirmation dialog"
-        >
-          <XIcon size={14} />
-        </button>
-
-        <div
-          className={`flex h-14 w-14 items-center justify-center rounded-[1.2rem] border ${iconToneClasses[tone]}`}
-        >
-          <WarningCircleIcon size={24} />
-        </div>
-
         {eyebrow && (
-          <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-accent-strong">
             {eyebrow}
           </p>
         )}
         <h2
           id="confirm-dialog-title"
-          className="mt-2 text-3xl font-black tracking-tight text-on-surface"
+          className="text-xl font-semibold -tracking-[0.02em] text-ink"
         >
           {title}
         </h2>
-        <p
-          id="confirm-dialog-description"
-          className="mt-4 text-sm leading-7 text-on-surface-variant"
-        >
+        <p id="confirm-dialog-description" className="mt-2 text-sm leading-[1.55] text-ink-2">
           {description}
         </p>
 
-        <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <div className="mt-[22px] flex justify-end gap-[10px]">
           <Button variant="ghost" size="md" onClick={onCancel}>
             {cancelLabel}
           </Button>
           <Button
             ref={confirmButtonRef}
-            variant={tone === 'danger' ? 'danger' : tone === 'warning' ? 'secondary' : 'primary'}
+            variant={tone === 'danger' ? 'secondary' : 'primary'}
             size="md"
             onClick={onConfirm}
           >
             {confirmLabel}
           </Button>
         </div>
-      </Panel>
+      </div>
     </div>
   );
 }

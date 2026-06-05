@@ -37,21 +37,21 @@ export function Field({ label, children, hint, error }: FieldProps) {
     : children;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-[7px]">
       <label
         htmlFor={id}
-        className="text-[10px] uppercase tracking-[0.18em] text-on-surface-variant"
+        className="block text-xs font-semibold tracking-[0.01em] text-ink-3"
       >
         {label}
       </label>
       {child}
       {hint && (
-        <p id={hintId} className="text-xs text-on-surface-variant">
+        <p id={hintId} className="text-xs text-ink-3">
           {hint}
         </p>
       )}
       {error && (
-        <p id={errorId} className="text-xs text-error">
+        <p id={errorId} className="text-xs text-danger">
           {error}
         </p>
       )}
