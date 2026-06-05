@@ -4,11 +4,16 @@ import { getChatHistory, leaveRoom } from '../api/rooms';
 import { VideoArea } from '../components/room/VideoArea';
 import { RoomHeader } from '../components/room/RoomHeader';
 import { RoomSidebar } from '../components/room/RoomSidebar';
+import { ChatPanel } from '../components/room/ChatPanel';
+import { ParticipantList } from '../components/room/ParticipantList';
+import { MobileRoomHeader, MobileTabs } from '../components/room/MobileRoom';
 import { Button } from '../components/ui/Button';
-import { BrandMarkIcon } from '../components/ui/icons';
+import { LogoIcon } from '../components/ui/icons';
+import { Spinner } from '../components/ui/Spinner';
 import { StatePanel } from '../components/ui/StatePanel';
 import { useAuth } from '../hooks/useAuth';
-import { usePreferences } from '../hooks/usePreferences';
+import { useI18n } from '../hooks/useI18n';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useUi } from '../hooks/useUi';
 import { useLoadRoom } from '../hooks/useLoadRoom';
 import { useRoomWsHandler } from '../hooks/useRoomWsHandler';
@@ -29,18 +34,13 @@ const EMPTY_REFERENCE_FILE: ReferenceFileState = {
   fileVersion: 0,
 };
 
-interface SessionNotice {
-  tone: 'warning' | 'success';
-  title: string;
-  description: string;
-}
-
 export function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { confirm, pushToast } = useUi();
-  const { preferences } = usePreferences();
+  const { t } = useI18n();
+  const isMobile = useIsMobile();
 
   const participants = useRoomStore((state) => state.participants);
   const setParticipants = useRoomStore((state) => state.setParticipants);
@@ -70,16 +70,12 @@ export function RoomPage() {
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'participants'>('chat');
-  const [roomDeckOpen, setRoomDeckOpenState] = useState(false);
-  const [sidebarOpen, setSidebarOpenState] = useState(false);
   const [verifyResult, setVerifyResult] = useState<FileVerifyResult | null>(null);
   const [roomStatus, setRoomStatus] = useState<RoomStatus>('waiting_file');
   const [referenceFile, setReferenceFile] = useState<ReferenceFileState>(EMPTY_REFERENCE_FILE);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoReady, setVideoReady] = useState(false);
   const [interactionHint, setInteractionHint] = useState<string | null>(null);
-  const [sessionNotice, setSessionNotice] = useState<SessionNotice | null>(null);
-  const [roomChromeVisible, setRoomChromeVisible] = useState(true);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSeqRef = useRef<number | null>(null);
@@ -87,37 +83,15 @@ export function RoomPage() {
   const syncMessageRef = useRef<(message: SyncRelatedMessage) => void>(() => {});
   const fileUrlRef = useRef<string | null>(null);
   const interactionHintTimerRef = useRef<number | null>(null);
-  const sessionNoticeTimerRef = useRef<number | null>(null);
-  // Initialised to 'connecting' (true initial state) so the very first observed
-  // 'reconnecting' is NOT silently swallowed as the baseline (P2-9).
+  // Initialised to 'connecting' so the very first observed 'reconnecting' is not
+  // silently swallowed as the baseline (P2-9).
   const previousConnectionStateRef = useRef<'connected' | 'connecting' | 'reconnecting' | null>(
     'connecting'
   );
   const previousHostDisconnectedRef = useRef(false);
-  const roomDeckOpenRef = useRef(false);
-  const sidebarOpenRef = useRef(false);
-  const suppressNextVideoToggleRef = useRef(false);
   const announcedReadyVersionRef = useRef<number | null>(null);
 
   fileUrlRef.current = fileUrl;
-
-  const setRoomDeckOpen = useCallback((open: boolean) => {
-    roomDeckOpenRef.current = open;
-    setRoomDeckOpenState(open);
-  }, []);
-
-  const setSidebarOpen = useCallback((open: boolean) => {
-    sidebarOpenRef.current = open;
-    setSidebarOpenState(open);
-  }, []);
-
-  const toggleSidebarOpen = useCallback(() => {
-    setSidebarOpen(!sidebarOpenRef.current);
-  }, [setSidebarOpen]);
-
-  const closeSidebar = useCallback(() => {
-    setSidebarOpen(false);
-  }, [setSidebarOpen]);
 
   useEffect(() => {
     fileVersionRef.current = fileVersion;
@@ -169,7 +143,6 @@ export function RoomPage() {
           ? 'room_not_found'
           : 'room_connection_failed'
       );
-
       navigate('/create', { state: { arrivalNotice } });
     },
   });
@@ -178,25 +151,6 @@ export function RoomPage() {
     : isReconnecting
     ? 'reconnecting'
     : 'connecting';
-
-  const clearSessionNoticeTimer = useCallback(() => {
-    if (sessionNoticeTimerRef.current !== null) {
-      window.clearTimeout(sessionNoticeTimerRef.current);
-      sessionNoticeTimerRef.current = null;
-    }
-  }, []);
-
-  const showTimedSessionNotice = useCallback(
-    (notice: SessionNotice, durationMs = 3200) => {
-      clearSessionNoticeTimer();
-      setSessionNotice(notice);
-      sessionNoticeTimerRef.current = window.setTimeout(() => {
-        setSessionNotice(null);
-        sessionNoticeTimerRef.current = null;
-      }, durationMs);
-    },
-    [clearSessionNoticeTimer]
-  );
 
   const { handleSyncMessage, autoplayBlocked, resumePlayback, resyncToLastState } = useVideoSync({
     videoRef,
@@ -212,7 +166,7 @@ export function RoomPage() {
     (hash: string, size: number, durationMs: number, fileName: string) => {
       setVerifyResult(null);
       clearPlaybackState();
-      send('file_verify_request', {
+      return send('file_verify_request', {
         file_hash: hash,
         file_size: size,
         file_duration_ms: durationMs,
@@ -235,12 +189,10 @@ export function RoomPage() {
     if (readyVersion <= 0) {
       return false;
     }
-
     const sent = send('ready', { file_version: readyVersion });
     if (sent) {
       announcedReadyVersionRef.current = readyVersion;
     }
-
     return sent;
   }, [fileVersion, send]);
 
@@ -248,9 +200,8 @@ export function RoomPage() {
     setVideoReady(true);
     setVideoError(null);
     announceLocalFileReady();
-    // Re-apply the last known sync snapshot so a reconnect-while-playing
-    // resumes instead of freezing (P2-2/P2-3). Uses the same play/seek +
-    // autoplay-block guards as the sync_state handler in useVideoSync.
+    // Re-apply the last known sync snapshot so a reconnect-while-playing resumes
+    // instead of freezing (P2-2/P2-3).
     resyncToLastState();
   }, [announceLocalFileReady, resyncToLastState]);
 
@@ -259,7 +210,6 @@ export function RoomPage() {
       announcedReadyVersionRef.current = null;
       return;
     }
-
     const video = videoRef.current;
     const readyVersion = fileVersionRef.current;
     if (
@@ -272,7 +222,6 @@ export function RoomPage() {
     ) {
       return;
     }
-
     announceLocalFileReady();
   }, [announceLocalFileReady, fileUrl, isConnected, videoError]);
 
@@ -284,77 +233,53 @@ export function RoomPage() {
     [send]
   );
 
-  // Derived before the playback callbacks below so they can close over it
-  // without a temporal-dead-zone error (they reference it in their deps).
-  // Disabled while the host is gone: the room is autopaused/"closing" during the
-  // grace window, so control affordances (buttons, keyboard, click) go inert and
+  // Anyone can drive playback (backend permits it; only the host closes the
+  // room). Disabled while the host is gone (autopaused grace window) so controls
   // can't fight the host-disconnected overlay.
   const canControl = Boolean(fileUrl) && !hostDisconnected;
 
-  const showInteractionHint = useCallback((message = 'Load your file to control playback.') => {
-    if (interactionHintTimerRef.current !== null) {
-      window.clearTimeout(interactionHintTimerRef.current);
-    }
-
-    setInteractionHint(message);
-    interactionHintTimerRef.current = window.setTimeout(() => {
-      setInteractionHint(null);
-    }, 2200);
-  }, []);
-
-  const handleVideoPointerDown = useCallback(() => {
-    if (!roomDeckOpenRef.current && !sidebarOpenRef.current) {
-      return;
-    }
-
-    suppressNextVideoToggleRef.current = true;
-    setRoomDeckOpen(false);
-    setSidebarOpen(false);
-  }, [setRoomDeckOpen, setSidebarOpen]);
+  const showInteractionHint = useCallback(
+    (message: string = t.hint_load_file) => {
+      if (interactionHintTimerRef.current !== null) {
+        window.clearTimeout(interactionHintTimerRef.current);
+      }
+      setInteractionHint(message);
+      interactionHintTimerRef.current = window.setTimeout(() => {
+        setInteractionHint(null);
+      }, 2200);
+    },
+    [t.hint_load_file]
+  );
 
   const handleVideoClickToggle = useCallback(() => {
-    if (suppressNextVideoToggleRef.current) {
-      suppressNextVideoToggleRef.current = false;
-      return;
-    }
-
-    if (roomDeckOpenRef.current || sidebarOpenRef.current) {
-      setRoomDeckOpen(false);
-      setSidebarOpen(false);
-      return;
-    }
-
     if (!canControl) {
       showInteractionHint();
       return;
     }
-
     const video = videoRef.current;
     if (!video) {
       return;
     }
-
     const timeMs = Math.round(video.currentTime * 1000);
-
+    // Send FIRST and only mutate the local element when the socket accepted it.
+    // If send() returns false (socket dropped) we neither play/pause locally nor
+    // flip roomStatus, so this client can't drift ahead of the shared timeline.
     if (video.paused) {
-      video.play().catch(() => {});
-      // Only optimistically flip roomStatus when the socket accepted the message;
-      // if send() returns false (socket dropped) the echo won't come (P2-1).
       if (send('play', { current_time_ms: timeMs, file_version: fileVersion })) {
+        video.play().catch(() => {});
         setRoomStatus('playing');
       }
     } else {
-      video.pause();
       if (send('pause', { current_time_ms: timeMs, file_version: fileVersion })) {
+        video.pause();
         setRoomStatus('paused');
       }
     }
-  }, [canControl, fileVersion, send, setRoomDeckOpen, setSidebarOpen, showInteractionHint]);
+  }, [canControl, fileVersion, send, showInteractionHint]);
 
   const handlePlay = useCallback(
     (timeMs: number) => {
       const sent = send('play', { current_time_ms: timeMs, file_version: fileVersion });
-      // Only optimistically flip when the socket accepted the message (P2-1).
       if (sent) {
         setRoomStatus('playing');
       }
@@ -385,7 +310,6 @@ export function RoomPage() {
     if (!roomId || !chatCursor) {
       return false;
     }
-
     try {
       const history = await getChatHistory(roomId, chatCursor);
       setMessages((current) => {
@@ -406,7 +330,6 @@ export function RoomPage() {
     if (!roomId) {
       return;
     }
-
     try {
       const history = await getChatHistory(roomId);
       setMessages(history.messages);
@@ -417,138 +340,71 @@ export function RoomPage() {
     }
   }, [roomId, setChatCursor, setChatLoadError, setMessages]);
 
+  const isHost = room?.host_id === user?.id;
+
   const handleLeave = useCallback(async () => {
     if (!roomId) {
       return;
     }
-
-    const isHost = room?.host_id === user?.id;
     if (isHost) {
       const confirmed = await confirm({
-        eyebrow: 'Leave As Host',
-        title: 'Close the room for everyone?',
-        description:
-          'Leaving as host ends the synced session and disconnects every participant in the room.',
-        confirmLabel: 'Leave room',
-        cancelLabel: 'Stay here',
+        title: t.leave_host_q,
+        description: t.leave_host_sub,
+        confirmLabel: t.leave_host,
+        cancelLabel: t.stay_here,
         tone: 'danger',
       });
-
-      if (!confirmed) {
-        return;
-      }
-    } else if (preferences.confirmViewerLeave) {
-      const confirmed = await confirm({
-        eyebrow: 'Leave Room',
-        title: 'Leave this synced session?',
-        description:
-          'You will return to the dashboard and can rejoin later from your recent rooms if the session is still active.',
-        confirmLabel: 'Leave room',
-        cancelLabel: 'Stay here',
-        tone: 'warning',
-      });
-
       if (!confirmed) {
         return;
       }
     }
-
     try {
       await leaveRoom(roomId);
       pushToast({
-        tone: 'primary',
-        title: isHost ? 'Room closed' : 'You left the room',
-        description: isHost
-          ? 'The synced session was closed for everyone.'
-          : 'You can rejoin later from the dashboard.',
+        tone: isHost ? 'primary' : 'success',
+        title: isHost ? t.toast_closed_title : t.toast_left_title,
+        description: isHost ? t.toast_closed_sub : t.toast_left_sub,
       });
     } finally {
       navigate('/create');
     }
-  }, [
-    confirm,
-    navigate,
-    preferences.confirmViewerLeave,
-    pushToast,
-    room?.host_id,
-    roomId,
-    user?.id,
-  ]);
+  }, [confirm, isHost, navigate, pushToast, roomId, t]);
 
+  // Connection recovery toast (reconnecting → connected).
   useEffect(() => {
-    const previousConnectionState = previousConnectionStateRef.current;
-
-    if (previousConnectionState === connectionState) {
+    const previous = previousConnectionStateRef.current;
+    if (previous === connectionState) {
       return;
     }
-
-    if (connectionState === 'reconnecting') {
-      clearSessionNoticeTimer();
-      setSessionNotice({
-        tone: 'warning',
-        title: 'Reconnecting to the live room',
-        description:
-          'SyncWatch is restoring the room channel without discarding your local file or playback position.',
-      });
-    } else if (previousConnectionState === 'reconnecting' && connectionState === 'connected') {
-      showTimedSessionNotice(
-        {
-          tone: 'success',
-          title: 'Connection restored',
-          description: 'Realtime sync is back and the room timeline is current again.',
-        },
-        3400
-      );
+    if (previous === 'reconnecting' && connectionState === 'connected') {
       pushToast({
         tone: 'success',
-        title: 'Connection restored',
-        description: 'The live room link is healthy again.',
+        title: t.toast_conn_restored_title,
+        description: t.toast_conn_restored_sub,
         durationMs: 3200,
       });
-    } else if (connectionState === 'connected') {
-      clearSessionNoticeTimer();
-      setSessionNotice(null);
     }
-
     previousConnectionStateRef.current = connectionState;
-  }, [clearSessionNoticeTimer, connectionState, pushToast, showTimedSessionNotice]);
+  }, [connectionState, pushToast, t]);
 
+  // Host reconnected toast.
   useEffect(() => {
-    const previousHostDisconnected = previousHostDisconnectedRef.current;
-
-    if (!previousHostDisconnected && hostDisconnected) {
-      clearSessionNoticeTimer();
-      setSessionNotice(null);
-    }
-
-    if (previousHostDisconnected && !hostDisconnected) {
-      showTimedSessionNotice(
-        {
-          tone: 'success',
-          title: 'Host is back in the room',
-          description:
-            'The session stayed preserved, and shared playback control is available again.',
-        },
-        3600
-      );
+    const previous = previousHostDisconnectedRef.current;
+    if (previous && !hostDisconnected) {
       pushToast({
         tone: 'success',
-        title: 'Host reconnected',
-        description: 'The room recovered without losing its current state.',
+        title: t.toast_host_back_title,
+        description: t.toast_host_back_sub,
         durationMs: 3400,
       });
     }
-
     previousHostDisconnectedRef.current = hostDisconnected;
-  }, [clearSessionNoticeTimer, hostDisconnected, pushToast, showTimedSessionNotice]);
+  }, [hostDisconnected, pushToast, t]);
 
   useEffect(() => {
     return () => {
       if (interactionHintTimerRef.current !== null) {
         window.clearTimeout(interactionHintTimerRef.current);
-      }
-      if (sessionNoticeTimerRef.current !== null) {
-        window.clearTimeout(sessionNoticeTimerRef.current);
       }
       if (fileUrlRef.current) {
         URL.revokeObjectURL(fileUrlRef.current);
@@ -557,22 +413,17 @@ export function RoomPage() {
   }, []);
 
   const readyCount = participants.filter((participant) => participant.is_ready).length;
-  const isHost = room?.host_id === user?.id;
 
   if (loading) {
     return (
-      <div className="relative flex h-screen items-center justify-center overflow-hidden bg-surface px-4 text-on-surface">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(180,197,255,0.14),transparent_24%),linear-gradient(180deg,#090909_0%,#111111_45%,#151515_100%)]" />
-        </div>
+      <div className="flex h-screen items-center justify-center bg-bg px-4">
         <StatePanel
-          eyebrow="Preparing Room"
-          title="Loading the synced session"
-          description="Restoring room details, participant presence and recent chat before the player opens."
-          icon={<BrandMarkIcon size={26} />}
+          eyebrow="SyncWatch"
+          title={t.loading_room}
+          description={t.loading_room_sub}
+          icon={<Spinner size={26} tone="ink" />}
           tone="primary"
-          className="relative z-10 w-full max-w-md"
-          aria-live="polite"
+          className="w-full max-w-md"
         />
       </div>
     );
@@ -580,20 +431,17 @@ export function RoomPage() {
 
   if (!room) {
     return (
-      <div className="relative flex h-screen items-center justify-center overflow-hidden bg-surface px-4 text-on-surface">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(180,197,255,0.14),transparent_24%),linear-gradient(180deg,#090909_0%,#111111_45%,#151515_100%)]" />
-        </div>
+      <div className="flex h-screen items-center justify-center bg-bg px-4">
         <StatePanel
-          eyebrow="Room Unavailable"
-          title="This session is no longer open"
-          description="The room may have been removed, or your access to it has changed. You can safely return to the dashboard."
-          icon={<BrandMarkIcon size={26} />}
+          eyebrow="SyncWatch"
+          title={t.room_unavailable_title}
+          description={t.room_unavailable_sub}
+          icon={<LogoIcon size={26} />}
           tone="warning"
-          className="relative z-10 w-full max-w-md"
+          className="w-full max-w-md"
           actions={
             <Button variant="primary" size="md" onClick={() => navigate('/create')}>
-              Back to dashboard
+              {t.back_to_dashboard}
             </Button>
           }
         />
@@ -601,86 +449,117 @@ export function RoomPage() {
     );
   }
 
-  return (
-    <div className="relative min-h-screen w-full overflow-x-hidden overflow-y-auto bg-surface text-on-surface">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,98,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(180,197,255,0.14),transparent_24%),linear-gradient(180deg,#090909_0%,#111111_45%,#151515_100%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:36px_36px] opacity-25" />
-      </div>
+  const videoArea = (
+    <VideoArea
+      roomId={room.id}
+      roomStatus={roomStatus}
+      fileUrl={fileUrl}
+      videoRef={videoRef}
+      isHost={Boolean(isHost)}
+      canControl={canControl}
+      connectionState={connectionState}
+      hostDisconnected={hostDisconnected}
+      graceCountdown={graceCountdown}
+      referenceFileName={referenceFile.fileName}
+      referenceFileVersion={referenceFile.fileVersion}
+      videoError={videoError}
+      videoReady={videoReady}
+      readyParticipants={readyCount}
+      totalParticipants={participants.length}
+      autoplayBlocked={autoplayBlocked}
+      interactionHint={interactionHint}
+      mobile={isMobile}
+      onResumePlayback={resumePlayback}
+      onBlockedControlAttempt={showInteractionHint}
+      onFileVerified={handleFileVerified}
+      onVerifyRequest={handleVerifyRequest}
+      onVideoCanPlay={handleVideoCanPlay}
+      onVideoError={handleVideoError}
+      onVideoClickToggle={handleVideoClickToggle}
+      onPlay={handlePlay}
+      onPause={handlePause}
+      onSeek={handleSeek}
+      verifyResult={verifyResult}
+    />
+  );
 
-      <div className="relative z-10 flex min-h-screen flex-col bg-black" data-room-fullscreen-root>
-        <RoomHeader
+  if (isMobile) {
+    return (
+      <div className="flex h-screen flex-col overflow-hidden bg-surface text-ink">
+        <MobileRoomHeader
           roomName={room.name}
           roomCode={room.room_code}
-          connectionState={connectionState}
           isHost={Boolean(isHost)}
+          connectionState={connectionState}
           readyParticipants={readyCount}
           totalParticipants={participants.length}
-          messagesCount={messages.length}
-          drawerOpen={roomDeckOpen}
-          setDrawerOpen={setRoomDeckOpen}
-          launcherVisible={roomChromeVisible}
           onLeave={handleLeave}
         />
-
-        <main id="main" className="flex flex-1">
-          <h1 className="sr-only">{room?.name ?? 'Room'}</h1>
-          <div className="flex flex-1 items-stretch">
-            <VideoArea
-              roomId={room.id}
-              roomStatus={roomStatus}
-              fileUrl={fileUrl}
-              videoRef={videoRef}
-              isHost={Boolean(isHost)}
-              canControl={canControl}
-              connectionState={connectionState}
-              hostDisconnected={hostDisconnected}
-              graceCountdown={graceCountdown}
-              referenceFileName={referenceFile.fileName}
-              referenceFileVersion={referenceFile.fileVersion}
-              videoError={videoError}
-              videoReady={videoReady}
-              readyParticipants={readyCount}
-              totalParticipants={participants.length}
-              autoplayBlocked={autoplayBlocked}
-              interactionHint={interactionHint}
-              sessionNotice={sessionNotice}
-              onResumePlayback={resumePlayback}
-              onBlockedControlAttempt={showInteractionHint}
-              onFileVerified={handleFileVerified}
-              onVerifyRequest={handleVerifyRequest}
-              onVideoCanPlay={handleVideoCanPlay}
-              onVideoError={handleVideoError}
-              onVideoPointerDown={handleVideoPointerDown}
-              onVideoClickToggle={handleVideoClickToggle}
-              onControlsVisibilityChange={setRoomChromeVisible}
-              onPlay={handlePlay}
-              onPause={handlePause}
-              onSeek={handleSeek}
-              verifyResult={verifyResult}
-            />
-
-            <RoomSidebar
-              roomName={room.name}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              sidebarOpen={sidebarOpen}
-              toggleSidebar={toggleSidebarOpen}
-              closeSidebar={closeSidebar}
-              launcherVisible={roomChromeVisible}
-              participants={participants}
+        {videoArea}
+        <MobileTabs
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          chatCount={messages.length}
+          peopleCount={participants.length}
+        />
+        <main
+          id="main"
+          className="flex min-h-0 flex-1 flex-col"
+          role="tabpanel"
+          aria-labelledby={`mobile-room-tab-${activeTab}`}
+        >
+          <h1 className="sr-only">{room.name}</h1>
+          {activeTab === 'chat' ? (
+            <ChatPanel
               messages={messages}
+              onSend={handleSendChat}
               currentUserId={user?.id || ''}
-              hostId={room.host_id}
-              onSendChat={handleSendChat}
-              onLoadMoreChat={handleLoadMoreChat}
-              hasMoreChat={chatCursor !== null}
-              chatLoadError={chatLoadError}
-              onRetryChatLoad={handleRetryChatLoad}
+              onLoadMore={handleLoadMoreChat}
+              hasMore={chatCursor !== null}
+              loadError={chatLoadError}
+              onRetryLoad={handleRetryChatLoad}
             />
-          </div>
+          ) : (
+            <ParticipantList
+              participants={participants}
+              hostId={room.host_id}
+              currentUserId={user?.id || ''}
+            />
+          )}
         </main>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex h-screen flex-col bg-bg text-ink">
+      <RoomHeader
+        roomName={room.name}
+        roomCode={room.room_code}
+        connectionState={connectionState}
+        isHost={Boolean(isHost)}
+        readyParticipants={readyCount}
+        totalParticipants={participants.length}
+        onLeave={handleLeave}
+      />
+
+      <main id="main" className="flex min-h-0 flex-1">
+        <h1 className="sr-only">{room.name}</h1>
+        {videoArea}
+        <RoomSidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          participants={participants}
+          messages={messages}
+          currentUserId={user?.id || ''}
+          hostId={room.host_id}
+          onSendChat={handleSendChat}
+          onLoadMoreChat={handleLoadMoreChat}
+          hasMoreChat={chatCursor !== null}
+          chatLoadError={chatLoadError}
+          onRetryChatLoad={handleRetryChatLoad}
+        />
+      </main>
     </div>
   );
 }

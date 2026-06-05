@@ -33,6 +33,9 @@ docker-compose.override.yml
 # Build output
 frontend/dist/
 
+# Local dev TLS certs (self-signed, for LAN HTTPS testing)
+frontend/certs/
+
 # Pytest
 .pytest_cache/
 backend/.pytest_cache/
@@ -42,3 +45,10 @@ backend/.pytest_cache/
 
 # Playwright MCP logs
 .playwright-mcp/
+
+# Local design / work artifacts (screenshots, mockups, zips — never part of the app)
+/*.png
+/*.zip
+/design-prompt.txt
+/newdesign_extracted/
+/stitch_synchronized_video_player/

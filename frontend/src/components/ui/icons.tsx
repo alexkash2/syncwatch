@@ -298,3 +298,143 @@ export function SettingsSlidersIcon(props: IconProps) {
     </BaseIcon>
   );
 }
+
+/* ============================================================
+   Redesign icon set (thin line, 1.6 stroke, currentColor).
+   Ported from the design bundle.
+   ============================================================ */
+
+const STROKE = {
+  stroke: 'currentColor',
+  strokeWidth: 1.6,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+};
+
+export function LogoIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6" {...STROKE} strokeWidth={1.8} />
+      <path d="M17.5 3.5v3.4h-3.4M6.5 20.5v-3.4h3.4" {...STROKE} strokeWidth={1.8} />
+      <circle cx="12" cy="12" r="2.2" fill="currentColor" />
+    </BaseIcon>
+  );
+}
+
+export function PlusIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M12 5v14M5 12h14" {...STROKE} strokeWidth={1.8} />
+    </BaseIcon>
+  );
+}
+
+export function KeyIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="8" cy="8" r="3.5" {...STROKE} />
+      <path d="M10.5 10.5 20 20M16 16l2-2M18 18l2-2" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function BoltIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M13 3 5 13h6l-1 8 8-10h-6l1-8Z" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function MailIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2.4" {...STROKE} />
+      <path d="M4 7l8 5.5L20 7" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function LockIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2" {...STROKE} />
+      <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function UserIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="12" cy="8" r="3.4" {...STROKE} />
+      <path d="M5.5 20a6.5 6.5 0 0 1 13 0" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function EyeIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" {...STROKE} />
+      <circle cx="12" cy="12" r="2.6" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function EyeOffIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M4 4l16 16" {...STROKE} />
+      <path
+        d="M9.6 5.9A8.7 8.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a15 15 0 0 1-3 3.5M6.4 7.4A15 15 0 0 0 2.5 12S6 18.5 12 18.5a8.6 8.6 0 0 0 3.3-.65"
+        {...STROKE}
+      />
+      <path d="M9.9 10.2a2.6 2.6 0 0 0 3.7 3.6" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function FilmIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect x="3.5" y="5" width="17" height="14" rx="2.4" {...STROKE} />
+      <path d="M8 5v14M16 5v14M3.5 9.5h4.5M16 9.5h4.5M3.5 14.5h4.5M16 14.5h4.5" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function FileIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" {...STROKE} />
+      <path d="M14 3v5h5" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function Skip5BackIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M11 4 5 9l6 5" {...STROKE} />
+      <path d="M5 9h9a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5H9" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function Skip5ForwardIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M13 4l6 5-6 5" {...STROKE} />
+      <path d="M19 9h-9a5 5 0 0 0-5 5v0a5 5 0 0 0 5 5h5" {...STROKE} />
+    </BaseIcon>
+  );
+}
+
+export function ArrowRightIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M5 12h14M13 6l6 6-6 6" {...STROKE} />
+    </BaseIcon>
+  );
+}

@@ -24,17 +24,18 @@ For running without Docker, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 ## What it does
 
 - **Local-file playback** — each participant plays a file from their disk. Identity verified via partial SHA-256 (`head ‖ middle ‖ tail ‖ size`) — no uploads.
-- **Host-controlled playback** — only the room creator can play/pause/seek. State is server-authoritative; everyone else gets `sync_state` broadcasts.
+- **Shared playback control** — any participant can play/pause/seek; state is server-authoritative and broadcast as `sync_state`. Only the host can **close** the room.
 - **Drift correction** — server sends `sync_check` every 3 s while playing, clients report position + buffer health, server decides between "ignore / nudge rate / hard seek".
 - **Text chat** — persisted, cursor-paginated history, rate-limited.
 - **Reconnect with grace periods** — host 30 s, participant 60 s. Host dropping autopauses for everyone; reconnect resumes.
 - **Tab dedup** — one active tab per user per room; opening a second tab kicks the first with a clear message.
+- **Bilingual UI** — English / Polish, switchable in-app (persisted to `localStorage`). Light, minimal design with an emerald accent; separate desktop and mobile layouts.
 
 ## Player controls
 
-- **Play/Pause** — click button, click video area, or press `Space` *(host only)*
-- **Seek ±5 s** — `←` / `→` arrow keys, or ⏪ / ⏩ buttons *(host only)*
-- **Fullscreen** — `F` key or ⛶ button
+- **Play/Pause** — click button, click video area, or press `Space` (available to every participant)
+- **Seek ±5 s** — `←` / `→` arrow keys, or the −5s / +5s buttons
+- **Fullscreen** — `F` key or the ⛶ button. Device-aware: real Fullscreen API on desktop / Android / iPad / macOS, CSS pseudo-fullscreen on iPhone (where the Fullscreen API isn't available on a `<div>`).
 - **Volume** — slider, independent per user
 
 ## Repo layout

@@ -32,29 +32,29 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     if (!this.state.error) return this.props.children;
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface p-6">
-        <div className="max-w-md text-center space-y-6">
-          <div className="text-5xl">⚠</div>
-          <h1 className="font-black text-2xl tracking-tighter text-on-surface">
-            Something went wrong
-          </h1>
-          <p className="text-on-surface-variant text-sm">
-            The app hit an unexpected error. You can try reloading this page or
-            going back to the dashboard.
+      <div className="flex min-h-screen items-center justify-center bg-bg p-6">
+        <div className="max-w-md space-y-6 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[14px] bg-warning-tint text-2xl text-warning">
+            ⚠
+          </div>
+          <h1 className="text-2xl font-bold -tracking-[0.02em] text-ink">Something went wrong</h1>
+          <p className="text-sm leading-7 text-ink-2">
+            The app hit an unexpected error. You can try reloading this page or going back to the
+            dashboard.
           </p>
-          <pre className="text-[11px] text-on-surface-variant/60 bg-surface-container-lowest p-3 overflow-auto text-left max-h-32">
+          <pre className="max-h-32 overflow-auto rounded-[10px] bg-surface-2 p-3 text-left text-[11px] text-ink-3">
             {this.state.error.message}
           </pre>
-          <div className="flex gap-3 justify-center">
+          <div className="flex justify-center gap-3">
             <button
               onClick={this.handleReload}
-              className="px-6 py-3 bg-gradient-to-br from-primary-container to-[#0053da] text-on-primary-container font-bold uppercase text-xs tracking-widest active:scale-95 transition-all cursor-pointer"
+              className="h-12 rounded-[14px] bg-accent px-[22px] text-[15px] font-semibold text-white transition hover:bg-accent-strong"
             >
               Reload
             </button>
             <button
               onClick={this.handleGoHome}
-              className="px-6 py-3 border border-outline-variant/30 text-on-surface-variant hover:text-on-surface font-bold uppercase text-xs tracking-widest active:scale-95 transition-all cursor-pointer"
+              className="h-12 rounded-[14px] border border-line-2 bg-surface px-[22px] text-[15px] font-semibold text-ink transition hover:bg-surface-2"
             >
               Go home
             </button>

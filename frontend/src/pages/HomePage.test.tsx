@@ -4,24 +4,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import { HomePage } from './HomePage';
 import { AuthContext, type AuthModalMode } from '../contexts/AuthContext';
+import { LanguageProvider } from '../i18n/LanguageContext';
 import type { User } from '../types/auth';
 
 const navigateMock = vi.hoisted(() => vi.fn());
 
 vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router')>();
-  return {
-    ...actual,
-    useNavigate: () => navigateMock,
-  };
+  return { ...actual, useNavigate: () => navigateMock };
 });
 
-vi.mock('../components/brand/BrandIllustration', () => ({
-  BrandIllustration: () => <div data-testid="brand-illustration" />,
-}));
-
-vi.mock('../components/layout/Layout', () => ({
-  Layout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+vi.mock('../api/rooms', () => ({
+  listRooms: vi.fn(async () => ({ rooms: [], total: 0 })),
+  createRoom: vi.fn(),
+  joinRoom: vi.fn(),
+  deleteRoom: vi.fn(),
 }));
 
 interface AuthState {
@@ -45,56 +42,47 @@ function renderPage(auth: AuthState) {
   };
 
   return render(
-    <AuthContext.Provider value={value}>
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>
-    </AuthContext.Provider>
+    <LanguageProvider>
+      <AuthContext.Provider value={value}>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </AuthContext.Provider>
+    </LanguageProvider>
   );
 }
 
-describe('HomePage hero actions', () => {
-  it('Create a room navigates authenticated user to create-room section', async () => {
-    navigateMock.mockClear();
-    renderPage({ isAuthenticated: true, openAuthModal: vi.fn() });
-
-    await userEvent.click(screen.getAllByRole('button', { name: /create a room/i })[0]);
-
-    expect(navigateMock).toHaveBeenCalledWith('/create', {
-      state: { focusSection: 'create-room' },
-    });
-  });
-
-  it('Join with code navigates authenticated user to join-room section', async () => {
-    navigateMock.mockClear();
-    renderPage({ isAuthenticated: true, openAuthModal: vi.fn() });
-
-    await userEvent.click(screen.getByRole('button', { name: /join with code/i }));
-
-    expect(navigateMock).toHaveBeenCalledWith('/create', {
-      state: { focusSection: 'join-room' },
-    });
-  });
-
-  it('Create a room opens auth modal for guest with register-friendly prompt', async () => {
-    navigateMock.mockClear();
+describe('HomePage (adaptive)', () => {
+  it('guest sees the landing CTAs and Create opens the register modal', async () => {
     const openAuthModal = vi.fn();
     renderPage({ isAuthenticated: false, openAuthModal });
 
-    await userEvent.click(screen.getAllByRole('button', { name: /create a room/i })[0]);
-
+    await userEvent.click(screen.getByRole('button', { name: /create a room/i }));
+    expect(openAuthModal).toHaveBeenCalledWith(undefined, 'register');
     expect(navigateMock).not.toHaveBeenCalled();
-    expect(openAuthModal).toHaveBeenCalledWith('Sign in to create a room.');
   });
 
-  it('Join with code opens auth modal for guest with join-specific prompt', async () => {
-    navigateMock.mockClear();
+  it('guest Join with code opens the login modal', async () => {
     const openAuthModal = vi.fn();
     renderPage({ isAuthenticated: false, openAuthModal });
 
     await userEvent.click(screen.getByRole('button', { name: /join with code/i }));
+    expect(openAuthModal).toHaveBeenCalledWith(undefined, 'login');
+  });
 
-    expect(navigateMock).not.toHaveBeenCalled();
-    expect(openAuthModal).toHaveBeenCalledWith('Sign in to join a room with a code.');
+  it('authenticated user lands on the dashboard workspace', async () => {
+    renderPage({
+      isAuthenticated: true,
+      openAuthModal: vi.fn(),
+      user: {
+        id: 'u1',
+        username: 'alice',
+        email: 'a@b.co',
+        is_active: true,
+        created_at: new Date().toISOString(),
+      },
+    });
+
+    expect(await screen.findByRole('heading', { name: /start watching/i })).toBeInTheDocument();
   });
 });

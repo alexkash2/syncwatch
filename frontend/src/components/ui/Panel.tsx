@@ -4,41 +4,34 @@ import { cn } from './cn';
 type PanelVariant = 'default' | 'muted' | 'glass' | 'outline' | 'dashed';
 
 const panelVariantClasses: Record<PanelVariant, string> = {
-  default:
-    'border border-outline-variant/15 bg-surface-container-low/76 shadow-[0_18px_44px_rgba(0,0,0,0.22)]',
-  muted: 'border border-outline-variant/12 bg-surface-container-lowest/78',
-  glass:
-    'border border-outline-variant/18 bg-black/28 shadow-[0_20px_60px_rgba(0,0,0,0.28)] backdrop-blur-xl',
-  outline: 'border border-outline-variant/18 bg-surface-container-low/54',
-  dashed: 'border border-dashed border-outline-variant/25 bg-surface-container-lowest/84',
+  default: 'border border-line bg-surface shadow-[0_1px_2px_rgba(16,23,20,0.05)]',
+  muted: 'border border-line bg-surface-2',
+  glass: 'border border-line bg-surface shadow-[0_18px_48px_rgba(16,23,20,0.12)]',
+  outline: 'border border-line bg-surface',
+  dashed: 'border border-dashed border-line-2 bg-surface-2',
 };
 
 interface PanelProps extends ComponentPropsWithoutRef<'div'> {
   variant?: PanelVariant;
-  padding?: 'sm' | 'md' | 'lg';
+  padding?: 'none' | 'sm' | 'md' | 'lg';
 }
 
 const paddingClasses = {
+  none: '',
   sm: 'p-4',
-  md: 'p-5',
-  lg: 'p-6 md:p-8',
+  md: 'p-6',
+  lg: 'p-[30px]',
 } as const;
 
 export const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
-  {
-    variant = 'default',
-    padding = 'md',
-    className,
-    children,
-    ...props
-  },
+  { variant = 'default', padding = 'md', className, children, ...props },
   ref
 ) {
   return (
     <div
       ref={ref}
       className={cn(
-        'rounded-[1.8rem]',
+        'rounded-[18px]',
         panelVariantClasses[variant],
         paddingClasses[padding],
         className

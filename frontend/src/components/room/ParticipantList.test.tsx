@@ -32,7 +32,7 @@ describe('ParticipantList', () => {
 
   it('shows readiness states', () => {
     render(<ParticipantList participants={participants} hostId="u1" currentUserId="u2" />);
-    expect(screen.getAllByText('Ready')).toHaveLength(2);
-    expect(screen.getByText('Waiting')).toBeInTheDocument();
+    expect(screen.getAllByTitle('Ready')).toHaveLength(2);
+    expect(screen.getByTitle('Waiting')).toBeInTheDocument();
   });
 });
