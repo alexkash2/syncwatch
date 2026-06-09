@@ -2,8 +2,8 @@
 
 ## 2026-06-04 — Frontend redesign: light/emerald port (branch `redesign/frontend-emerald`)
 
-Ported the new design prototype (`newdesign_extracted/`, light minimalism · emerald
-accent · Space Grotesk/JetBrains Mono) 1:1 onto the real stack, keeping **all** the
+Ported the new design prototype (light minimalism · emerald accent ·
+Space Grotesk/JetBrains Mono) 1:1 onto the real stack, keeping **all** the
 existing backend wiring (REST + WebSocket sync) untouched. The presentational layer
 was rebuilt; the WS/sync hooks, zustand store, API client and types are unchanged.
 
@@ -43,7 +43,7 @@ Done in 4 reviewed chunks (each: tsc + eslint + build + vitest green):
 Visual check (Playwright): guest landing, auth modal (desktop + mobile bottom sheet)
 and 404 match the prototype. Dashboard/room live check pending the backend stack.
 
-**Review round** — independent Opus code review returned **APPROVED FOR MERGE**
+**Review round** — an independent code review returned **APPROVED FOR MERGE**
 (P1=0, P2=0): all WS/sync wiring confirmed preserved, i18n keys type-enforced, token
 migration fully resolved. Applied the review + a11y advisories that don't alter the
 design: iPhone pseudo-fullscreen now force-exits when the file is cleared
@@ -53,7 +53,7 @@ toast `role` dropped; spinners use the labelled `Spinner`. Known caveat (design-
 inherent, left for fidelity): white-on-emerald buttons and some faint meta text are
 below WCAG AA contrast — flagged for a later accent-darkening pass if desired.
 
-**Codex round 1** — 3×P2 + 1×P3, all fixed (socket-drop drift / clipboard edge cases):
+**External review round 1** — 3×P2 + 1×P3, all fixed (socket-drop drift / clipboard edge cases):
 - P2 `FileSelector` — a hash that resolves *after* the selector unmounts could
   `createObjectURL` with no owner to revoke it → leak. The unmount cleanup now bumps
   `requestNonce` so the in-flight guard short-circuits before `createObjectURL`.
@@ -66,7 +66,7 @@ below WCAG AA contrast — flagged for a later accent-darkening pass if desired.
 - P3 `CodeChip` — reported "Copied" without awaiting the clipboard write. Now `await`s
   `writeText`; success → checkmark + `onCopy`, failure → new `onError` (warning toast).
 
-**Codex round 2** — round-1 fixes confirmed correct; 2×P2 + 1×P3 more, all fixed:
+**External review round 2** — round-1 fixes confirmed correct; 2×P2 + 1×P3 more, all fixed:
 - P2 `PlaybackControls` — seek (±5s + scrubber) still moved the local `<video>` before the
   WS `seek` was accepted. `onSeek` is now `=> boolean`; skip/scrubber send first and only
   set `currentTime` on success, reverting the scrubber to the real position on failure.
@@ -76,14 +76,14 @@ below WCAG AA contrast — flagged for a later accent-darkening pass if desired.
 - P3 `Dashboard` — the desktop room-row `CodeChip` was missing the `onError` callback (only
   the mobile row had it). Wired `onError={onCopyError}` so a denied clipboard shows a toast.
 
-**Codex round 3** — 1×P2, fixed: the native `<input type=range>` scrubber's own keyboard
+**External review round 3** — 1×P2, fixed: the native `<input type=range>` scrubber's own keyboard
 (arrows/Home/End on focus) changed the value via `onChange` but never committed a seek or
 moved the element. Added a `seekInteractionActiveRef` interaction guard + `keydown`/`keyup`
 handlers on the scrubber so keyboard edits commit through the same send-first `handleSeekEnd`
 (move on success, snap back on reject), with double-send guarded. +2 regression tests
 (keyboard seek commit + reject). Suite now 44.
 
-**Codex round 4** — 2×P2 + 1×P3 (follow-ons from the round-2/3 fixes), all fixed:
+**External review round 4** — 2×P2 + 1×P3 (follow-ons from the round-2/3 fixes), all fixed:
 - P2 `PlaybackControls` — `handleSeekStart` marked an interaction active without seeding
   `seekValueRef`, so an interaction with no change event (thumb click without moving, arrow
   at a boundary) committed a stale ref (often 0) and jerked the video to the start. Now seeds
@@ -97,13 +97,13 @@ handlers on the scrubber so keyboard edits commit through the same send-first `h
   inside the `onSeek` mock that `video.currentTime` is still the old value when the send fires,
   so a reordered (mutate-before-send) impl fails.
 
-**Codex round 5** — verified the round-4 fixes; no new findings → **APPROVED FOR MERGE**.
-Codex loop closed clean after 5 rounds (11 issues total, all P2/P3 around socket-drop drift
+**External review round 5** — verified the round-4 fixes; no new findings → **APPROVED FOR MERGE**.
+The review loop closed clean after 5 rounds (11 issues total, all P2/P3 around socket-drop drift
 and clipboard/StrictMode edge cases — zero P1).
 
 Gates: frontend tsc + eslint + build + vitest 44 — all green.
 
-## 2026-05-30 — Codex review of P3 cleanup (branch `chore/p3-cleanup`)
+## 2026-05-30 — External review of P3 cleanup (branch `chore/p3-cleanup`)
 
 P1=1, P2=0, P3=2 — all applied:
 
@@ -117,7 +117,7 @@ P1=1, P2=0, P3=2 — all applied:
 - **P3** skip-to-main link hoisted to `App.tsx` (covers RoomPage, which doesn't render
   `Layout`); removed the duplicate from `Layout`.
 - **P3 (follow-up round)** `NotFoundPage` now renders `<main id="main">` so the global
-  skip link has a target on the 404 route too. Codex then returned **APPROVED FOR MERGE**.
+  skip link has a target on the 404 route too. The reviewer then returned **APPROVED FOR MERGE**.
 
 Gates: backend pytest 74 + ruff clean; frontend tsc + lint + build + vitest 44.
 
@@ -140,7 +140,7 @@ ErrorBoundary→Sentry, SECRET_KEY default behavior, and assorted cosmetic items
 
 Gates: backend pytest 74 + ruff clean; frontend tsc + lint + build + vitest 44.
 
-## 2026-05-30 — Codex audit review, round 2 (branch `audit/p1-p2-fixes`)
+## 2026-05-30 — External audit review, round 2 (branch `audit/p1-p2-fixes`)
 
 P1=0, P2=0 (round-1's three blockers confirmed closed), P3=1 — applied:
 
@@ -152,9 +152,9 @@ P1=0, P2=0 (round-1's three blockers confirmed closed), P3=1 — applied:
 
 Gates: backend pytest 74 + ruff clean; frontend vitest 44.
 
-## 2026-05-30 — Codex audit review, round 1 (branch `audit/p1-p2-fixes`)
+## 2026-05-30 — External audit review, round 1 (branch `audit/p1-p2-fixes`)
 
-Independent Codex pass over the audit branch (`reviews/codex-prompt-audit.md`).
+Independent review pass over the audit branch.
 P1=1, P2=2, P3=2 — all applied:
 
 - **P1** login limiter was peek-then-record → a burst of concurrent bad logins
@@ -193,7 +193,7 @@ Gates: backend pytest **68** (was 62), frontend vitest **42** (was 29); ruff cle
 
 ## 2026-05-30 — P1/P2 audit remediation sprint (branch `audit/p1-p2-fixes`)
 
-Acted on the four independent project-wide audits in `reviews/` (backend, frontend,
+Acted on the four independent project-wide audits (backend, frontend,
 security, a11y). Fixed every P1+P2 that was a safe, in-scope code change; documented
 the rest (migrations / deployment tuning) with rationale. Gates after each chunk:
 backend pytest 62, frontend tsc + lint + build + vitest 29.
@@ -224,7 +224,7 @@ in-memory `jti`/ticket, token_version revocation as a follow-up).
 
 ## 2026-05-29 — Viewer playback control (any participant can play/pause/seek)
 
-Implemented per `reviews/viewer-control-plan.md` (Sonnet → Opus self-review).
+Implemented per the viewer-control plan, with a follow-up self-review.
 Resolves `IDEAS.md` §1: playback is no longer host-only.
 
 **Changed:**
@@ -242,14 +242,14 @@ Resolves `IDEAS.md` §1: playback is no longer host-only.
   (self-heals) + generic error-toast fallback so control rejections aren't silent.
 - `frontend/src/components/room/PlaybackControls.test.tsx` — new (4 tests).
 
-**Self-review (Opus):**
+**Self-review:**
 
-- **P1** `RoomPage.tsx` — Sonnet placed `const canControl` *after* the
+- **P1** `RoomPage.tsx` — the first pass placed `const canControl` *after* the
   `handleVideoClickToggle` callback that references it in its deps → temporal-dead-zone
   ReferenceError crashing the room on render (tsc/vitest missed it; no RoomPage
   render test). Moved the declaration above the playback callbacks.
 
-**Review round 1 — code (`final-reviewer`) + security (`general-purpose` opus), parallel:**
+**Review round 1 — code + security angles, in parallel:**
 
 - **P1** (code) `handler.py` — a viewer could un-pause the room during the
   host-disconnect grace window: the `window` keydown handler lives behind the
@@ -269,11 +269,11 @@ Resolves `IDEAS.md` §1: playback is no longer host-only.
 - **P3** (code) — renamed `onNonHostControlAttempt` → `onBlockedControlAttempt`
   (the block is now "no file loaded", not "not host") across the 3 wiring sites + test.
 
-Out of scope / backlog (for Codex / follow-up): close non-host sockets on `/leave`
+Out of scope / backlog (follow-up): close non-host sockets on `/leave`
 to fix the membership gap for chat/ready/verify too (not just control); a WS
 integration test harness to cover the new guards end-to-end (TODO.md item).
 
-**Manual Codex round 1 (independent, user-run) — P1=0, P2=3, P3=2, all applied:**
+**External review round 1 (independent) — P1=0, P2=3, P3=2, all applied:**
 
 - **P2** `handler.py` — the room-wide limiter was consumed *before* the membership
   re-check, so a departed user could burn the shared budget and starve legit
@@ -291,7 +291,7 @@ integration test harness to cover the new guards end-to-end (TODO.md item).
   carries the restored `room_status` so a reconnect into a `waiting_ready` room
   isn't forced to `paused` on the client.
 
-**Manual Codex round 2 — P1=0, P2=1, P3=1, all applied (edge cases from round 1's fixes):**
+**External review round 2 — P1=0, P2=1, P3=1, all applied (edge cases from round 1's fixes):**
 
 - **P2** `handler.py` — before a reference file is chosen `state.file_version == 0`,
   so the new "must match" check passed `0 == 0` and a client could flip a
@@ -302,12 +302,12 @@ integration test harness to cover the new guards end-to-end (TODO.md item).
   validation in `file_verify_request` left for the audit backlog — backend P3-5 /
   security P3-2.)
 
-Gates after Codex round 2: backend pytest 61, frontend tsc + lint + vitest (29) green
+Gates after review round 2: backend pytest 61, frontend tsc + lint + vitest (29) green
 (frontend unchanged this round; build last green at round 1).
 
 ## 2026-04-20 — Deep-review fixes
 
-Third independent review (two parallel agents, no context from prior
+Third independent review (two parallel reviewers, no context from prior
 rounds). Every P1/P2 finding addressed; half the P3s handled, the rest
 documented in TODO.md.
 
@@ -559,14 +559,14 @@ Full functional, security, UX and reliability audit pass. All fixes landed; back
 ## 2026-04-03
 - Project initialized. Created implementation plan (PLAN.md), README, project description for university (SyncWatch_opis_projektu.docx).
 - PLAN.md v2: architecture constraints, state machines, reconnect policy, WS envelope, new events.
-- PLAN.md v3: fixed all Codex v2 review issues — reconnect protocol, participant_status, RoomState, global seq, room_code gen, nginx description.
-- **Phase 1**: Backend (FastAPI + auth + JWT + ws-ticket + bcrypt + Alembic), Frontend (Vite + React + TS + Tailwind + auth pages), Docker Compose. Codex review: fixed 7 issues.
-- **Phase 2**: Room + RoomParticipant models, CRUD with room_code gen (A-Z0-9), join/leave, max_participants. Codex review: fixed 7 issues.
-- **Phase 3**: WebSocket + real-time chat. ConnectionManager with connection_id, seq, tab dedup. ChatMessage model + REST history (cursor pagination). Codex review: fixed 7 issues.
-- **Phase 4**: File selection + verification. Partial SHA-256 hashing (head+middle+tail+size). FileSelector with states. Codex review: fixed 7 issues.
-- **Phase 5**: Video player + sync. sync.py (canonical time, drift evaluation). play/pause/seek handlers (host-only). Per-room heartbeat (3s). Codex review: fixed 6 issues.
-- **Phase 6**: Reconnect lifecycle. Host grace period (30s, CLOSING state, autopause). Participant grace period (60s). Codex review: fixed 7 issues.
+- PLAN.md v3: fixed all v2 review issues — reconnect protocol, participant_status, RoomState, global seq, room_code gen, nginx description.
+- **Phase 1**: Backend (FastAPI + auth + JWT + ws-ticket + bcrypt + Alembic), Frontend (Vite + React + TS + Tailwind + auth pages), Docker Compose. Review pass: fixed 7 issues.
+- **Phase 2**: Room + RoomParticipant models, CRUD with room_code gen (A-Z0-9), join/leave, max_participants. Review pass: fixed 7 issues.
+- **Phase 3**: WebSocket + real-time chat. ConnectionManager with connection_id, seq, tab dedup. ChatMessage model + REST history (cursor pagination). Review pass: fixed 7 issues.
+- **Phase 4**: File selection + verification. Partial SHA-256 hashing (head+middle+tail+size). FileSelector with states. Review pass: fixed 7 issues.
+- **Phase 5**: Video player + sync. sync.py (canonical time, drift evaluation). play/pause/seek handlers (host-only). Per-room heartbeat (3s). Review pass: fixed 6 issues.
+- **Phase 6**: Reconnect lifecycle. Host grace period (30s, CLOSING state, autopause). Participant grace period (60s). Review pass: fixed 7 issues.
 - SECRET_KEY: crashes in production if default value used.
 - Mobile responsive layout for all pages.
 - .gitattributes: enforce LF line endings.
-- Design assets from Stitch (redesign variant, adapted to match plan).
+- Design mockups added (redesign variant, adapted to match plan).

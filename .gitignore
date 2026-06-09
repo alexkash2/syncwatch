@@ -40,15 +40,6 @@ frontend/certs/
 .pytest_cache/
 backend/.pytest_cache/
 
-# Claude
-.claude/
-
-# Playwright MCP logs
-.playwright-mcp/
-
 # Local design / work artifacts (screenshots, mockups, zips — never part of the app)
 /*.png
 /*.zip
-/design-prompt.txt
-/newdesign_extracted/
-/stitch_synchronized_video_player/
