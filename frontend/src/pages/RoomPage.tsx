@@ -188,11 +188,16 @@ export function RoomPage() {
   // Host wants a different file: drop the local one and return to the selector.
   // The server keeps the old reference until the new file is verified, at which
   // point it bumps file_version and broadcasts file_changed to the viewers.
-  const handleChangeFile = useCallback(() => {
+  const handleChangeFile = useCallback(async () => {
     if (roomId) {
-      // Forget the persisted handle, otherwise the selector's auto-restore
-      // would immediately re-load the file we're trying to replace.
-      void clearPersistedRoomFile(roomId);
+      // Forget the persisted handle BEFORE remounting the selector, otherwise
+      // its auto-restore can race the IndexedDB delete and immediately re-load
+      // the very file we're trying to replace.
+      try {
+        await clearPersistedRoomFile(roomId);
+      } catch {
+        // Best effort — worst case the selector restores the old file once.
+      }
     }
     setVerifyResult(null);
     setFileUrl(null);

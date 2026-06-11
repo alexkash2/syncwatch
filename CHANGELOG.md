@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-11 — Pre-release review follow-ups
+
+Two findings from an independent pre-release review pass, both fixed:
+
+- A touch tap could hide the fullscreen control bar while the video was
+  paused; hiding is now allowed only mid-playback, so a paused fullscreen
+  player always keeps its controls reachable.
+- "Change file" now awaits the persisted-handle cleanup before reopening the
+  selector — previously the selector's auto-restore could race the IndexedDB
+  delete and instantly re-load the file being replaced.
+
 ## 2026-06-11 — Host can change the file mid-room; joined rooms stay in "Your rooms"
 
 Two manual-testing findings:

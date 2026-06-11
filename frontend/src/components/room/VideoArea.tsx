@@ -133,14 +133,16 @@ export function VideoArea({
 
   // Touch devices never pause on tap — a tap only toggles the control bar
   // (pausing for everyone in the room is too destructive for a stray touch).
+  // Hiding is only allowed mid-playback: while paused the bar stays pinned,
+  // so a tap can't strand a paused fullscreen player with no controls.
   const handleVideoTap = useCallback(() => {
-    if (isFullscreen && controlsVisible) {
+    if (isFullscreen && controlsVisible && isPlaying) {
       clearHideTimer();
       setControlsVisible(false);
     } else {
       revealControls();
     }
-  }, [clearHideTimer, controlsVisible, isFullscreen, revealControls]);
+  }, [clearHideTimer, controlsVisible, isFullscreen, isPlaying, revealControls]);
 
   // Entering/leaving fullscreen always goes through a user gesture, so the
   // bar starts visible there; the effect above arms the idle countdown.
