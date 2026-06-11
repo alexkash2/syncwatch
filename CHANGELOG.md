@@ -21,6 +21,9 @@ Full docs-vs-code consistency pass before the project defense:
 - Dropped `PLAN.md` (fully superseded by `docs/`), replaced the stock Vite template
   README in `frontend/` with a real one, cleaned `SyncWatch_opis_projektu.docx`
   metadata.
+- Fixed a flaky frontend test: AuthModal "closes on Escape" raced the async
+  (rAF) autofocus on CI — the test now focuses a field inside the dialog
+  synchronously before sending the key.
 
 ## 2026-06-04 — Frontend redesign: light/emerald port (branch `redesign/frontend-emerald`)
 
