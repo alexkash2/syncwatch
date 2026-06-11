@@ -97,7 +97,7 @@ Create a room and join as host.
 
 ### `GET /api/rooms/?page=1&size=20`
 
-Rooms where the caller is an active participant (host or otherwise).
+Active rooms the caller has participated in (as host or guest). Past membership counts — a participant whose session lapsed (left or timed out) still sees the room here and can rejoin by code.
 
 **Responses**: `200` — `{ rooms: Room[], total: number }`. `size` capped at 100.
 

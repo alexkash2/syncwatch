@@ -3,7 +3,7 @@ import { useFullscreen } from '../../hooks/useFullscreen';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../ui/cn';
 import { Button } from '../ui/Button';
-import { CheckIcon, PlayIcon } from '../ui/icons';
+import { CheckIcon, FileIcon, PlayIcon } from '../ui/icons';
 import { FileSelector } from './FileSelector';
 import { PlaybackControls } from './PlaybackControls';
 import { StageOverlay, WaitingBanner } from './StageOverlays';
@@ -36,6 +36,8 @@ interface VideoAreaProps {
   onVideoCanPlay: () => void;
   onVideoError: (errorCode: string) => void;
   onVideoClickToggle: () => void;
+  /** Host-only: drop the current file and reopen the selector to pick a new one. */
+  onChangeFile?: () => void;
   onPlay: (timeMs: number) => boolean;
   onPause: (timeMs: number) => boolean;
   onSeek: (timeMs: number) => boolean;
@@ -68,6 +70,7 @@ export function VideoArea({
   onVideoCanPlay,
   onVideoError,
   onVideoClickToggle,
+  onChangeFile,
   onPlay,
   onPause,
   onSeek,
@@ -233,17 +236,29 @@ export function VideoArea({
               onToggleFullscreen={handleToggleFullscreen}
             />
 
-            {/* filename chip */}
+            {/* filename chip + host's change-file action */}
             <div
               className={cn(
-                'pointer-events-none absolute left-[18px] top-4 z-10 flex items-center gap-2 rounded-[8px] bg-black/35 px-[10px] py-[5px] font-mono text-[12.5px] text-on-stage-2 backdrop-blur-sm transition-opacity duration-300',
-                controlsHidden && 'opacity-0'
+                'absolute left-[18px] top-4 z-10 flex items-center gap-2 transition-opacity duration-300',
+                controlsHidden && 'pointer-events-none opacity-0'
               )}
             >
-              <CheckIcon size={13} className="text-accent" />
-              <span className="max-w-[42vw] truncate">
-                {referenceFileName ?? 'video'}
-              </span>
+              <div className="pointer-events-none flex items-center gap-2 rounded-[8px] bg-black/35 px-[10px] py-[5px] font-mono text-[12.5px] text-on-stage-2 backdrop-blur-sm">
+                <CheckIcon size={13} className="text-accent" />
+                <span className="max-w-[42vw] truncate">
+                  {referenceFileName ?? 'video'}
+                </span>
+              </div>
+              {isHost && onChangeFile && (
+                <button
+                  type="button"
+                  onClick={onChangeFile}
+                  className="flex shrink-0 items-center gap-1.5 rounded-[8px] bg-black/35 px-[10px] py-[5px] text-[12.5px] text-on-stage-2 backdrop-blur-sm transition-colors hover:bg-black/55 hover:text-on-stage"
+                >
+                  <FileIcon size={13} />
+                  {t.change_file}
+                </button>
+              )}
             </div>
 
             {showPlayGlyph && (

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-06-11 — Host can change the file mid-room; joined rooms stay in "Your rooms"
+
+Two manual-testing findings:
+
+- **Change file** — the host gets a "Change file" button next to the filename
+  chip; it returns them to the selector (suppressing the persisted-handle
+  auto-restore) while viewers keep watching the old reference until the new
+  file is verified — then the usual `file_changed` flow kicks in.
+- **"Your rooms" lost joined rooms** — closing a tab eventually marks the
+  participant as left (grace-period expiry), and the dashboard listed only
+  *active* memberships, so guest rooms silently vanished. The list now counts
+  any participation in a still-active room, and "Open" re-joins by code first
+  (idempotent). Fixing the regression test surfaced a second bug: the partial
+  unique index lacked `sqlite_where`, so on the SQLite test backend every
+  rejoin insert hit the (full) unique index; the IntegrityError fallback also
+  returned an expired ORM object. Both fixed (76 backend tests).
+
 ## 2026-06-11 — Fix flaky UUID corruption on the SQLite test backend; pin dependencies
 
 CI rolled a once-in-a-million flake: `uuid4()` produced a hex consisting of

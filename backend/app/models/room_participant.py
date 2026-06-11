@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Index, func
+from sqlalchemy import Boolean, ForeignKey, Index, func, text
 from sqlalchemy import Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -11,11 +11,16 @@ from app.models.base import Base
 class RoomParticipant(Base):
     __tablename__ = "room_participants"
     __table_args__ = (
+        # Partial unique index: one ACTIVE membership per (room, user); leaving
+        # and rejoining inserts a fresh row. sqlite_where keeps the SQLite test
+        # backend on the same semantics (without it the index degrades to a
+        # full unique index there and every rejoin insert hits IntegrityError).
         Index(
             "ix_active_participant",
             "room_id", "user_id",
             unique=True,
             postgresql_where="left_at IS NULL",
+            sqlite_where=text("left_at IS NULL"),
         ),
     )
 

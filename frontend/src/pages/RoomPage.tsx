@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { getChatHistory, leaveRoom } from '../api/rooms';
+import { clearPersistedRoomFile } from '../utils/persistentFileHandle';
 import { VideoArea } from '../components/room/VideoArea';
 import { RoomHeader } from '../components/room/RoomHeader';
 import { RoomSidebar } from '../components/room/RoomSidebar';
@@ -183,6 +184,19 @@ export function RoomPage() {
     },
     [clearPlaybackState, setFileUrl]
   );
+
+  // Host wants a different file: drop the local one and return to the selector.
+  // The server keeps the old reference until the new file is verified, at which
+  // point it bumps file_version and broadcasts file_changed to the viewers.
+  const handleChangeFile = useCallback(() => {
+    if (roomId) {
+      // Forget the persisted handle, otherwise the selector's auto-restore
+      // would immediately re-load the file we're trying to replace.
+      void clearPersistedRoomFile(roomId);
+    }
+    setVerifyResult(null);
+    setFileUrl(null);
+  }, [roomId, setFileUrl]);
 
   const announceLocalFileReady = useCallback(() => {
     const readyVersion = fileVersionRef.current || fileVersion;
@@ -476,6 +490,7 @@ export function RoomPage() {
       onVideoCanPlay={handleVideoCanPlay}
       onVideoError={handleVideoError}
       onVideoClickToggle={handleVideoClickToggle}
+      onChangeFile={handleChangeFile}
       onPlay={handlePlay}
       onPause={handlePause}
       onSeek={handleSeek}

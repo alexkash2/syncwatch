@@ -121,6 +121,7 @@ const en = {
   volume: 'Volume',
   mute: 'Mute',
   unmute: 'Unmute',
+  change_file: 'Change file',
 
   // ---- room lifecycle states ----
   st_reconnect_title: 'Reconnecting…',
@@ -319,6 +320,7 @@ const pl: Record<keyof typeof en, string> = {
   volume: 'Głośność',
   mute: 'Wycisz',
   unmute: 'Wyłącz wyciszenie',
+  change_file: 'Zmień plik',
 
   st_reconnect_title: 'Ponowne łączenie…',
   st_reconnect_sub: 'Chwila — odświeżamy pokój. Twój plik i miejsce w nim są bezpieczne.',

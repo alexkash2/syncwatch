@@ -283,6 +283,56 @@ async def test_create_and_join_room(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_left_room_still_listed_and_rejoinable(client: AsyncClient):
+    """Dashboard regression: a joined room must stay in the user's room list
+    after their participation lapses (left_at is set on REST /leave and on
+    grace-period expiry), and joining again by code must succeed."""
+    for name in ("lhost", "lguest"):
+        await client.post(
+            "/api/auth/register",
+            json={"username": name, "email": f"{name}@example.com", "password": "password123"},
+        )
+    host_tok = (
+        await client.post(
+            "/api/auth/login",
+            json={"email": "lhost@example.com", "password": "password123"},
+        )
+    ).json()["access_token"]
+    guest_tok = (
+        await client.post(
+            "/api/auth/login",
+            json={"email": "lguest@example.com", "password": "password123"},
+        )
+    ).json()["access_token"]
+    host_hdr = {"Authorization": f"Bearer {host_tok}"}
+    guest_hdr = {"Authorization": f"Bearer {guest_tok}"}
+
+    room = (
+        await client.post("/api/rooms/", json={"name": "Sticky"}, headers=host_hdr)
+    ).json()
+    r = await client.post(
+        "/api/rooms/join", json={"room_code": room["room_code"]}, headers=guest_hdr
+    )
+    assert r.status_code == 200
+
+    r = await client.post(f"/api/rooms/{room['id']}/leave", headers=guest_hdr)
+    assert r.status_code == 200
+
+    # Still listed for the guest after leaving…
+    r = await client.get("/api/rooms/", headers=guest_hdr)
+    assert r.status_code == 200
+    assert room["id"] in [item["id"] for item in r.json()["rooms"]]
+
+    # …and joining again by code reactivates the membership.
+    r = await client.post(
+        "/api/rooms/join", json={"room_code": room["room_code"]}, headers=guest_hdr
+    )
+    assert r.status_code == 200
+    r = await client.get(f"/api/rooms/{room['id']}", headers=guest_hdr)
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_delete_room_only_host(client: AsyncClient):
     await client.post(
         "/api/auth/register",

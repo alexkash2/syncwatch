@@ -67,9 +67,12 @@ async def get_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> 
 async def get_user_rooms(
     db: AsyncSession, user_id: uuid.UUID, page: int = 1, size: int = 20
 ) -> tuple[list[Room], int]:
+    # Any participation counts, past or present: closing the tab eventually sets
+    # left_at (grace-period expiry), but the dashboard should still list every
+    # active room the user has been in — rejoining is idempotent via the code.
     subquery = (
         select(RoomParticipant.room_id)
-        .where(RoomParticipant.user_id == user_id, RoomParticipant.left_at == None)
+        .where(RoomParticipant.user_id == user_id)
     )
     base = select(Room).where(Room.is_active == True, Room.id.in_(subquery))
 
@@ -126,7 +129,10 @@ async def join_room(db: AsyncSession, room_code: str, user_id: uuid.UUID) -> Roo
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        # Partial unique index conflict = already joined (race condition)
+        # Partial unique index conflict = already joined (race condition).
+        # Rollback expires the ORM object — reload it before handing it to the
+        # response layer, which reads attributes outside this async context.
+        await db.refresh(room)
         return room
     await db.refresh(room)
     return room

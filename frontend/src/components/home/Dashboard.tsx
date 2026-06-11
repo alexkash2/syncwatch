@@ -298,6 +298,26 @@ export function Dashboard() {
     }
   };
 
+  const handleOpen = useCallback(
+    async (room: Room) => {
+      // Membership may have lapsed (closing the tab eventually marks the
+      // participant as left), so re-join by code first — idempotent when the
+      // membership is still active — and only then enter the room.
+      try {
+        await joinRoom(room.room_code);
+        navigate(`/room/${room.id}`);
+      } catch (err: unknown) {
+        pushToast({
+          tone: 'danger',
+          title: t.err_join_room,
+          description: (err as { response?: { data?: { detail?: string } } }).response?.data
+            ?.detail,
+        });
+      }
+    },
+    [navigate, pushToast, t.err_join_room]
+  );
+
   const handleDelete = useCallback(
     async (room: Room) => {
       const confirmed = await confirm({
@@ -442,7 +462,7 @@ export function Dashboard() {
                     room={room}
                     isHost={room.host_id === user?.id}
                     last={index === sortedRooms.length - 1}
-                    onOpen={(r) => navigate(`/room/${r.id}`)}
+                    onOpen={(r) => void handleOpen(r)}
                     onDelete={handleDelete}
                     onCopy={handleCopy}
                     onCopyError={handleCopyError}
