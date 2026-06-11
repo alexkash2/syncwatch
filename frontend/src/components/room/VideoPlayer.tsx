@@ -3,15 +3,22 @@ import { forwardRef, useEffect, useRef } from 'react';
 interface VideoPlayerProps {
   src: string | null;
   isInteractive: boolean;
+  hideCursor?: boolean;
   onCanPlay: () => void;
   onError: (message: string) => void;
   onClickToggle: () => void;
+  /** Tap on a touch device — reveals/hides the control bar instead of pausing. */
+  onTouchTap?: () => void;
   onToggleFullscreen: () => void;
 }
 
 export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
-  ({ src, isInteractive, onCanPlay, onError, onClickToggle, onToggleFullscreen }, ref) => {
+  (
+    { src, isInteractive, hideCursor = false, onCanPlay, onError, onClickToggle, onTouchTap, onToggleFullscreen },
+    ref
+  ) => {
     const clickTimerRef = useRef<number | null>(null);
+    const lastPointerTypeRef = useRef<string>('mouse');
 
     useEffect(
       () => () => {
@@ -28,7 +35,13 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
       }
       // Debounce so a double-click (fullscreen) doesn't also toggle playback.
       clickTimerRef.current = window.setTimeout(() => {
-        onClickToggle();
+        // A finger tap must never pause the whole room — on touch it only
+        // toggles the control bar; play/pause lives on the explicit button.
+        if (lastPointerTypeRef.current === 'touch') {
+          onTouchTap?.();
+        } else {
+          onClickToggle();
+        }
         clickTimerRef.current = null;
       }, 220);
     };
@@ -55,12 +68,17 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
       <video
         ref={ref}
         src={src ?? undefined}
-        className={`h-full w-full object-contain ${isInteractive ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`h-full w-full object-contain ${
+          hideCursor ? 'cursor-none' : isInteractive ? 'cursor-pointer' : 'cursor-default'
+        }`}
         controls={false}
         // playsInline keeps the video inline on iPhone instead of forcing iOS's
         // native fullscreen player, whose own play/pause/seek controls bypass our
         // handlers and desync viewers.
         playsInline
+        onPointerDown={(event) => {
+          lastPointerTypeRef.current = event.pointerType || 'mouse';
+        }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onCanPlay={onCanPlay}

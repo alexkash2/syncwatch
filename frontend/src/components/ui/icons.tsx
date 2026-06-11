@@ -240,7 +240,21 @@ export function FullscreenIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
       <path
-        d="M8.3 4.8H5.8v2.5m0 9.4v2.5h2.5m10.1-14.4h-2.5v2.5m0 9.4v2.5h2.5"
+        d="M9 4.8H4.8V9M15 4.8h4.2V9M19.2 15v4.2H15M9 19.2H4.8V15"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </BaseIcon>
+  );
+}
+
+export function ExitFullscreenIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path
+        d="M4.8 9H9V4.8M19.2 9H15V4.8M15 19.2V15h4.2M9 19.2V15H4.8"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
@@ -261,6 +275,25 @@ export function VolumeIcon(props: IconProps) {
       />
       <path
         d="M15.2 9.25a3.65 3.65 0 0 1 0 5.5m1.95-7.55a6.35 6.35 0 0 1 0 9.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </BaseIcon>
+  );
+}
+
+export function VolumeMutedIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path
+        d="M5.5 10.1h2.9l3.55-2.9v9.6L8.4 13.9H5.5v-3.8Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m15.1 9.9 4.2 4.2m0-4.2-4.2 4.2"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"

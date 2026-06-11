@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFullscreen } from '../../hooks/useFullscreen';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../ui/cn';
@@ -9,6 +9,8 @@ import { PlaybackControls } from './PlaybackControls';
 import { StageOverlay, WaitingBanner } from './StageOverlays';
 import { VideoPlayer } from './VideoPlayer';
 import type { FileVerifyResult, RoomStatus } from '../../types/ws';
+
+const CONTROLS_HIDE_MS = 3000;
 
 interface VideoAreaProps {
   roomId: string;
@@ -75,9 +77,76 @@ export function VideoArea({
 }: VideoAreaProps) {
   const { t } = useI18n();
   const stageRef = useRef<HTMLElement>(null);
-  const { isPseudo, toggle: toggleFullscreen, exit: exitFullscreen } = useFullscreen(stageRef);
+  const {
+    isFullscreen,
+    isPseudo,
+    toggle: toggleFullscreen,
+    exit: exitFullscreen,
+  } = useFullscreen(stageRef);
   const resumeButtonRef = useRef<HTMLButtonElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Fullscreen control-bar auto-hide: visible on activity, hidden after a
+  // few idle seconds while playing (outside fullscreen the bar is always on).
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const hideTimerRef = useRef<number | null>(null);
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current !== null) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+  const armHideTimer = useCallback(() => {
+    clearHideTimer();
+    hideTimerRef.current = window.setTimeout(() => {
+      hideTimerRef.current = null;
+      setControlsVisible(false);
+    }, CONTROLS_HIDE_MS);
+  }, [clearHideTimer]);
+
+  // The idle countdown only runs while fullscreen and playing; pausing or
+  // leaving fullscreen cancels it (the bar is pinned in those states).
+  useEffect(() => {
+    if (isFullscreen && isPlaying) {
+      armHideTimer();
+      return clearHideTimer;
+    }
+    clearHideTimer();
+    return undefined;
+  }, [armHideTimer, clearHideTimer, isFullscreen, isPlaying]);
+
+  const revealControls = useCallback(() => {
+    setControlsVisible(true);
+    if (isFullscreen && isPlaying) {
+      armHideTimer();
+    }
+  }, [armHideTimer, isFullscreen, isPlaying]);
+
+  const handleStageMouseMove = useCallback(() => {
+    if (isFullscreen) {
+      revealControls();
+    }
+  }, [isFullscreen, revealControls]);
+
+  // Touch devices never pause on tap — a tap only toggles the control bar
+  // (pausing for everyone in the room is too destructive for a stray touch).
+  const handleVideoTap = useCallback(() => {
+    if (isFullscreen && controlsVisible) {
+      clearHideTimer();
+      setControlsVisible(false);
+    } else {
+      revealControls();
+    }
+  }, [clearHideTimer, controlsVisible, isFullscreen, revealControls]);
+
+  // Entering/leaving fullscreen always goes through a user gesture, so the
+  // bar starts visible there; the effect above arms the idle countdown.
+  const handleToggleFullscreen = useCallback(() => {
+    setControlsVisible(true);
+    toggleFullscreen();
+  }, [toggleFullscreen]);
+
+  const controlsHidden = isFullscreen && !controlsVisible;
 
   // Leave fullscreen if the player surface disappears (file cleared / changed) —
   // otherwise an iPhone pseudo-fullscreen overlay would strand the user.
@@ -95,12 +164,17 @@ export function VideoArea({
       return;
     }
     const sync = () => setIsPlaying(!video.paused);
+    // Any pause (local button, another participant, drift correction) pins
+    // the control bar back on — matches what every standard player does.
+    const showBar = () => setControlsVisible(true);
     sync();
     video.addEventListener('play', sync);
     video.addEventListener('pause', sync);
+    video.addEventListener('pause', showBar);
     return () => {
       video.removeEventListener('play', sync);
       video.removeEventListener('pause', sync);
+      video.removeEventListener('pause', showBar);
     };
   }, [fileUrl, videoReady, videoRef]);
 
@@ -126,15 +200,17 @@ export function VideoArea({
     !hostDisconnected &&
     !reconnecting;
 
-  const stageBodyFill = !mobile || isPseudo;
+  const stageBodyFill = !mobile || isFullscreen;
 
   return (
     <section
       ref={stageRef}
+      onMouseMove={handleStageMouseMove}
       className={cn(
         'relative flex min-w-0 flex-col bg-stage',
         mobile && !isPseudo ? 'w-full shrink-0' : 'flex-1',
-        isPseudo && 'sw-pseudo-fullscreen'
+        isPseudo && 'sw-pseudo-fullscreen',
+        controlsHidden && 'cursor-none'
       )}
     >
       <div
@@ -149,14 +225,21 @@ export function VideoArea({
               ref={videoRef}
               src={fileUrl}
               isInteractive={canControl}
+              hideCursor={controlsHidden}
               onCanPlay={onVideoCanPlay}
               onError={onVideoError}
               onClickToggle={onVideoClickToggle}
-              onToggleFullscreen={toggleFullscreen}
+              onTouchTap={handleVideoTap}
+              onToggleFullscreen={handleToggleFullscreen}
             />
 
             {/* filename chip */}
-            <div className="pointer-events-none absolute left-[18px] top-4 z-10 flex items-center gap-2 rounded-[8px] bg-black/35 px-[10px] py-[5px] font-mono text-[12.5px] text-on-stage-2 backdrop-blur-sm">
+            <div
+              className={cn(
+                'pointer-events-none absolute left-[18px] top-4 z-10 flex items-center gap-2 rounded-[8px] bg-black/35 px-[10px] py-[5px] font-mono text-[12.5px] text-on-stage-2 backdrop-blur-sm transition-opacity duration-300',
+                controlsHidden && 'opacity-0'
+              )}
+            >
               <CheckIcon size={13} className="text-accent" />
               <span className="max-w-[42vw] truncate">
                 {referenceFileName ?? 'video'}
@@ -238,16 +321,26 @@ export function VideoArea({
       </div>
 
       {fileUrl && (
-        <PlaybackControls
-          videoRef={videoRef}
-          canControl={canControl}
-          onPlay={onPlay}
-          onPause={onPause}
-          onSeek={onSeek}
-          videoReady={videoReady}
-          onBlockedControlAttempt={onBlockedControlAttempt}
-          onToggleFullscreen={toggleFullscreen}
-        />
+        <div
+          className={cn(
+            'shrink-0',
+            isFullscreen && 'absolute inset-x-0 bottom-0 z-20 transition-opacity duration-300',
+            controlsHidden && 'pointer-events-none opacity-0'
+          )}
+        >
+          <PlaybackControls
+            videoRef={videoRef}
+            canControl={canControl}
+            onPlay={onPlay}
+            onPause={onPause}
+            onSeek={onSeek}
+            videoReady={videoReady}
+            onBlockedControlAttempt={onBlockedControlAttempt}
+            onToggleFullscreen={handleToggleFullscreen}
+            overlay={isFullscreen}
+            isFullscreen={isFullscreen}
+          />
+        </div>
       )}
     </section>
   );

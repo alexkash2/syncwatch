@@ -17,10 +17,14 @@ import { fileURLToPath } from 'node:url'
 const certDir = fileURLToPath(new URL('./certs/', import.meta.url))
 const keyPath = `${certDir}key.pem`
 const certPath = `${certDir}cert.pem`
+// SW_DEV_HTTP=1 forces plain http (for local tooling that rejects the
+// self-signed cert); SW_BACKEND_PORT retargets the proxy when another
+// project already occupies 8000.
 const https =
-  existsSync(keyPath) && existsSync(certPath)
+  !process.env.SW_DEV_HTTP && existsSync(keyPath) && existsSync(certPath)
     ? { key: readFileSync(keyPath), cert: readFileSync(certPath) }
     : undefined
+const backendPort = process.env.SW_BACKEND_PORT ?? '8000'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -34,11 +38,11 @@ export default defineConfig({
       // where another project's container may be publishing port 8000. Forcing
       // IPv4 pins the proxy to the local SyncWatch backend.
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: `http://127.0.0.1:${backendPort}`,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'http://127.0.0.1:8000',
+        target: `http://127.0.0.1:${backendPort}`,
         ws: true,
         changeOrigin: true,
       },

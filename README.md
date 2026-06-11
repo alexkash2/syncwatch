@@ -33,10 +33,10 @@ For running without Docker, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Player controls
 
-- **Play/Pause** — click button, click video area, or press `Space` (available to every participant)
+- **Play/Pause** — click the button, click the video (mouse), or press `Space`. On touch screens a tap toggles the control bar instead of pausing, so a stray finger can't pause the room for everyone.
 - **Seek ±5 s** — `←` / `→` arrow keys, or the −5s / +5s buttons
-- **Fullscreen** — `F` key or the ⛶ button. Device-aware: real Fullscreen API on desktop / Android / iPad / macOS, CSS pseudo-fullscreen on iPhone (where the Fullscreen API isn't available on a `<div>`).
-- **Volume** — slider, independent per user
+- **Fullscreen** — `F` key or the ⛶ button. Device-aware: real Fullscreen API on desktop / Android / iPad / macOS, CSS pseudo-fullscreen on iPhone (where the Fullscreen API isn't available on a `<div>`). In fullscreen the control bar fades out after ~3 s of inactivity and comes back on mouse move or tap; it stays pinned while paused.
+- **Volume** — slider + mute toggle, independent per user
 
 ## Repo layout
 

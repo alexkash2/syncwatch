@@ -10,13 +10,16 @@ import {
   type RefObject,
 } from 'react';
 import { useI18n } from '../../hooks/useI18n';
+import { cn } from '../ui/cn';
 import {
+  ExitFullscreenIcon,
   FullscreenIcon,
   PauseIcon,
   PlayIcon,
   Skip5BackIcon,
   Skip5ForwardIcon,
   VolumeIcon,
+  VolumeMutedIcon,
 } from '../ui/icons';
 
 interface PlaybackControlsProps {
@@ -28,6 +31,10 @@ interface PlaybackControlsProps {
   videoReady: boolean;
   onBlockedControlAttempt?: () => void;
   onToggleFullscreen?: () => void;
+  /** Render as a floating overlay (gradient, no border) — used in fullscreen. */
+  overlay?: boolean;
+  /** Swap the fullscreen glyph to "exit" while the stage is fullscreen. */
+  isFullscreen?: boolean;
 }
 
 const SKIP_SECONDS = 5;
@@ -56,6 +63,8 @@ export function PlaybackControls({
   videoReady,
   onBlockedControlAttempt,
   onToggleFullscreen,
+  overlay = false,
+  isFullscreen = false,
 }: PlaybackControlsProps) {
   const { t } = useI18n();
   const [isPlaying, setIsPlaying] = useState(false);
@@ -71,6 +80,8 @@ export function PlaybackControls({
       return 0.7;
     }
   });
+  const [muted, setMuted] = useState(false);
+  const preMuteVolumeRef = useRef(0.7);
   const seekValueRef = useRef(0);
   const seekInteractionActiveRef = useRef(false);
 
@@ -104,13 +115,27 @@ export function PlaybackControls({
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.volume = volume;
+      videoRef.current.muted = muted;
     }
     try {
       window.localStorage.setItem('sw.volume', String(volume));
     } catch {
       // ignore storage failures (private mode / quota)
     }
-  }, [videoReady, videoRef, volume]);
+  }, [muted, videoReady, videoRef, volume]);
+
+  const isSilent = muted || volume === 0;
+  const toggleMute = useCallback(() => {
+    if (isSilent) {
+      setMuted(false);
+      if (volume === 0) {
+        setVolume(preMuteVolumeRef.current || 0.7);
+      }
+    } else {
+      preMuteVolumeRef.current = volume;
+      setMuted(true);
+    }
+  }, [isSilent, volume]);
 
   const togglePlay = useCallback(() => {
     if (!canControl) {
@@ -242,7 +267,14 @@ export function PlaybackControls({
   } as CSSProperties;
 
   return (
-    <div className="shrink-0 border-t border-white/[0.06] bg-stage-2 px-5 pb-4 pt-3">
+    <div
+      className={cn(
+        'px-4 pb-3 pt-2',
+        overlay
+          ? 'bg-gradient-to-t from-black/90 via-black/55 to-transparent pt-8 pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+          : 'border-t border-white/[0.06] bg-stage-2'
+      )}
+    >
       <p id={ACCESS_NOTE_ID} className="sr-only">
         Space toggles play, arrow keys seek, and F toggles fullscreen.
       </p>
@@ -262,17 +294,17 @@ export function PlaybackControls({
         onMouseUp={handleSeekEnd}
         onTouchEnd={handleSeekEnd}
         disabled={!canControl}
-        className="sw-scrubber mb-[14px] w-full"
+        className="sw-scrubber mb-2.5 w-full"
         style={scrubberFill}
         aria-label="Playback position"
         aria-describedby={ACCESS_NOTE_ID}
         aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
       />
 
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-[6px]" role="group" aria-label="Playback actions">
+      <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1" role="group" aria-label="Playback actions">
           <IconBtn label={t.back5} onClick={() => skipBy(-SKIP_SECONDS)}>
-            <Skip5BackIcon size={20} />
+            <Skip5BackIcon size={19} />
           </IconBtn>
           <IconBtn
             label="Play or pause video"
@@ -282,41 +314,52 @@ export function PlaybackControls({
             describedBy={ACCESS_NOTE_ID}
           >
             {isPlaying ? (
-              <PauseIcon size={22} />
+              <PauseIcon size={21} />
             ) : (
-              <PlayIcon size={22} className="ml-0.5" />
+              <PlayIcon size={21} className="ml-0.5" />
             )}
           </IconBtn>
           <IconBtn label={t.fwd5} onClick={() => skipBy(SKIP_SECONDS)}>
-            <Skip5ForwardIcon size={20} />
+            <Skip5ForwardIcon size={19} />
           </IconBtn>
         </div>
 
-        <span className="ml-2 whitespace-nowrap font-mono text-[13px] tabular-nums text-on-stage-2">
-          {formatTime(currentTime)} / {formatTime(duration)}
+        <span className="ml-2 whitespace-nowrap font-mono text-xs tabular-nums text-white/65">
+          {formatTime(currentTime)}
+          <span className="mx-1 text-white/35">/</span>
+          {formatTime(duration)}
         </span>
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-[10px] text-on-stage sm:w-[150px]">
-          <VolumeIcon size={19} className="shrink-0" />
+        <div className="flex items-center gap-1">
+          <IconBtn label={isSilent ? t.unmute : t.mute} onClick={toggleMute}>
+            {isSilent ? <VolumeMutedIcon size={19} /> : <VolumeIcon size={19} />}
+          </IconBtn>
           <input
             type="range"
             min={0}
             max={1}
             step={0.01}
-            value={volume}
-            onChange={(event) => setVolume(Number.parseFloat(event.target.value))}
-            className="sw-range hidden flex-1 sm:block"
+            value={muted ? 0 : volume}
+            onChange={(event) => {
+              const next = Number.parseFloat(event.target.value);
+              setVolume(next);
+              if (next > 0) {
+                setMuted(false);
+              }
+            }}
+            className="sw-range hidden w-[92px] sm:block"
             aria-label={t.volume}
-            aria-valuetext={`${Math.round(volume * 100)} percent`}
+            aria-valuetext={`${Math.round((muted ? 0 : volume) * 100)} percent`}
           />
         </div>
 
-        <div className="mx-[6px] h-[22px] w-px shrink-0 bg-white/[0.14]" />
-
-        <IconBtn label={t.fullscreen} onClick={() => onToggleFullscreen?.()}>
-          <FullscreenIcon size={19} />
+        <IconBtn
+          label={isFullscreen ? t.exit_fullscreen : t.fullscreen}
+          onClick={() => onToggleFullscreen?.()}
+        >
+          {isFullscreen ? <ExitFullscreenIcon size={19} /> : <FullscreenIcon size={19} />}
         </IconBtn>
       </div>
     </div>
@@ -345,10 +388,12 @@ function IconBtn({
       aria-label={label}
       aria-pressed={ariaPressed}
       aria-describedby={describedBy}
-      className={
-        'inline-flex shrink-0 items-center justify-center text-on-stage transition hover:bg-white/[0.14] ' +
-        (big ? 'h-[46px] w-[46px] rounded-full bg-white/10' : 'h-[38px] w-[38px] rounded-[9px]')
-      }
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center transition-colors',
+        big
+          ? 'h-11 w-11 rounded-full bg-accent text-white shadow-[0_2px_14px_rgba(22,185,129,0.35)] hover:bg-accent-strong'
+          : 'h-9 w-9 rounded-[10px] text-white/80 hover:bg-white/10 hover:text-white'
+      )}
     >
       {children}
     </button>

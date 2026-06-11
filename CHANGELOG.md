@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-06-11 — Player polish: fullscreen auto-hide, control-bar redesign, touch behaviour
+
+Manual-testing feedback round on the player:
+
+- **Fullscreen auto-hide** — in fullscreen the control bar (and filename chip) now
+  renders as an overlay with a bottom gradient and fades out after 3 s of
+  inactivity while playing; mouse move / tap brings it back, pause pins it on,
+  and the cursor hides with it. Outside fullscreen nothing changes.
+- **Control bar redesign** — slimmer scrubber (thumb appears on hover on
+  mouse devices), emerald play/pause button, ghost icon buttons, mute toggle on
+  the volume icon, cleaner time display.
+- **Fullscreen icons** — the broken expand glyph (two identical bottom corners)
+  is redrawn, and the button now switches to a proper "exit fullscreen" glyph
+  while fullscreen is active.
+- **Touch behaviour** — a tap on the video no longer pauses playback for the
+  whole room: on touch pointers it only toggles the control bar; play/pause
+  lives on the explicit button. Mouse click and `Space` keep the old behaviour.
+- **iPhone pseudo-fullscreen** — the bar overlay (instead of an in-flow block)
+  lets the video fill the entire viewport in landscape — previously it shrank
+  to a letterboxed box; `100dvw/100dvh` + safe-area padding on the bar.
+- Dev QoL: `SW_BACKEND_PORT` / `SW_DEV_HTTP` env knobs for the Vite proxy when
+  port 8000 is occupied or the self-signed cert gets in the way.
+
 ## 2026-06-11 — Pre-defense documentation sync + ws-ticket ordering fix
 
 Full docs-vs-code consistency pass before the project defense:

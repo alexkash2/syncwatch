@@ -117,7 +117,10 @@ const en = {
   back5: 'Back 5s',
   fwd5: 'Forward 5s',
   fullscreen: 'Fullscreen',
+  exit_fullscreen: 'Exit fullscreen',
   volume: 'Volume',
+  mute: 'Mute',
+  unmute: 'Unmute',
 
   // ---- room lifecycle states ----
   st_reconnect_title: 'Reconnecting…',
@@ -312,7 +315,10 @@ const pl: Record<keyof typeof en, string> = {
   back5: 'Cofnij 5s',
   fwd5: 'Do przodu 5s',
   fullscreen: 'Pełny ekran',
+  exit_fullscreen: 'Zamknij pełny ekran',
   volume: 'Głośność',
+  mute: 'Wycisz',
+  unmute: 'Wyłącz wyciszenie',
 
   st_reconnect_title: 'Ponowne łączenie…',
   st_reconnect_sub: 'Chwila — odświeżamy pokój. Twój plik i miejsce w nim są bezpieczne.',
