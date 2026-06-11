@@ -108,9 +108,9 @@ Browsers can't send `Authorization` headers on WS handshake. We avoid putting th
 
 The URL can still appear in logs, but the ticket is single-use and expires quickly, so replay is meaningless.
 
-### Host-only playback control
+### Server-authoritative playback control
 
-`play`/`pause`/`seek` over WS are rejected for non-hosts with `error/not_host`. The server maintains authoritative playback state (`is_playing`, `current_time_ms`, `last_update_epoch`) and broadcasts `sync_state` to everyone on change. This avoids the N-way sync problem entirely.
+Any active participant can `play`/`pause`/`seek` over WS — each command is rate-limited, re-validates membership, and must carry the current `file_version`. The server maintains authoritative playback state (`is_playing`, `current_time_ms`, `last_update_epoch`) and broadcasts `sync_state` to everyone on change; clients never sync with each other directly, which avoids the N-way sync problem. Closing the room stays host-only.
 
 ### Canonical time & drift correction
 

@@ -2,7 +2,7 @@
 
 ## Backend
 
-59 tests, pytest-asyncio. Split into unit-style (pure logic) and integration-style (FastAPI + in-memory SQLite DB).
+74 tests, pytest-asyncio. Split into unit-style (pure logic) and integration-style (FastAPI + in-memory SQLite DB).
 
 ```bash
 cd backend
@@ -20,7 +20,9 @@ Files:
 | `tests/test_ws.py`             | unit        | `ConnectionManager`: connect, tab-dedup, disconnect, stale-id disconnect, broadcast, seq, close-room cleanup. |
 | `tests/test_grace_period.py`   | unit        | disconnect → grace period bookkeeping, reconnect cancels timer, close_room cancels all timers. |
 | `tests/test_sync.py`           | unit        | canonical time math, drift thresholds (nudge/seek/ignore), buffering bypass, buffer-health guard. |
+| `tests/test_rate_limit.py`     | unit        | sliding-window limiter: cap enforcement, `peek` doesn't record, slot release, per-key isolation, max-keys hard cap. |
 | `tests/test_integration_rest.py` | integration | End-to-end REST flows: register → login → rooms CRUD, ws-ticket permissions, rate limiting, no-enumeration on login, /health. |
+| `tests/test_ws_integration.py` | integration | Full WS flow over TestClient: handshake → `room_state`, bad-ticket rejection, host sets reference file, non-host playback control, stale `file_version` rejection, chat broadcast. |
 
 ### Integration fixture
 
@@ -51,6 +53,12 @@ Files:
 | ----------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `src/utils/fileHash.test.ts`                          | `computeFileHash` — 64-hex SHA-256 output, determinism, size sensitivity, partial-hash path for files >3 MB. |
 | `src/components/room/ParticipantList.test.tsx`        | Host badge, "(you)" label for the current user, sort order (host first, then alphabetical), ready-state legend. |
+| `src/components/room/PlaybackControls.test.tsx`       | `canControl` gating: buttons / `Space` / seekbar enabled vs blocked (with `onBlockedControlAttempt`), keyboard seek commits through `onSeek`. |
+| `src/components/auth/AuthModal.test.tsx`              | Open/close behaviour (Escape, backdrop), login vs register views, client-side username validation, post-register switch to login. |
+| `src/contexts/AuthContext.test.tsx`                   | Auth-modal state: default login mode, explicit mode + message carry-over, close clears state. |
+| `src/hooks/useRoomWsHandler.test.ts`                  | WS message → store routing: `chat_message`, `participant_ready`, error-code toast policy (incl. silenced `file_version_mismatch`), `host_reconnected`. |
+| `src/hooks/useVideoSync.test.ts`                      | Applying `sync_state` (seek/play/pause), `sync_report` replies, resync snapshots guarded by `file_version`. |
+| `src/pages/HomePage.test.tsx`                         | Adaptive home: guest landing CTAs open the right auth modal, authenticated users get the dashboard. |
 
 Test setup lives in `src/test/setup.ts` — wires `@testing-library/jest-dom` matchers into Vitest.
 

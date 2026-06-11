@@ -88,7 +88,7 @@ Vite dev server proxies `/api` and `/ws` to `http://localhost:8000`.
 ## Tests
 
 ```bash
-cd backend && PYTHONPATH=. pytest -q           # 59 tests
+cd backend && PYTHONPATH=. pytest -q           # 74 tests
 cd frontend && npx tsc --noEmit && npm run test:run
 ```
 

@@ -23,7 +23,7 @@ Out of scope for MVP: insider threats, nation-state TLS attacks, physical access
 - `get_current_user` dependency on every authed REST route.
 - WebSocket auth via **one-time ticket** (`POST /api/auth/ws-ticket`) tied to `(user_id, room_id)`, 30 s TTL, single-use. Avoids putting JWTs in URL query strings (which end up in access logs).
 - `ws-ticket` endpoint verifies the caller is an active participant of the room before issuing.
-- Host-only actions (`play`/`pause`/`seek` over WS, `DELETE /api/rooms/{id}`, `PUT .../file-info`) check `user_id == host_id`.
+- Host-only actions (`DELETE /api/rooms/{id}`, setting or changing the reference file via `file_verify_request`) check `user_id == host_id`. Playback control (`play`/`pause`/`seek`) is open to every active participant, but each command re-validates membership and the current `file_version` server-side.
 
 ### Rate limiting
 In-memory sliding-window limiter (`app/core/rate_limit.py`):

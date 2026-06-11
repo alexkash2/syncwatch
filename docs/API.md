@@ -54,7 +54,7 @@ Swap a refresh token for a fresh token pair.
 - `400` — token invalid/expired or user no longer active.
 - `429` — rate limited.
 
-> **Known limitation:** the old refresh token stays valid until expiry. Proper rotation with revocation is tracked in [TODO](../TODO.md).
+> Refresh tokens are **single-use**: a successful refresh marks the old token's `jti` as used (in-memory), and replaying it returns `400`. An explicit logout endpoint and bulk revocation are tracked in [TODO](../TODO.md).
 
 ---
 
@@ -145,24 +145,6 @@ Host-only. Deactivates the room and broadcasts `room_closed { reason: "deleted" 
 - `200` — `{ "ok": true }`
 - `403` — caller is not the host.
 - `404` — room not found.
-
----
-
-### `PUT /api/rooms/{room_id}/file-info`
-
-Host-only. Sets or replaces the reference file metadata. **Usually not called directly** — use the `file_verify_request` WS message instead, which does the same through a nicer flow.
-
-**Request**
-```json
-{
-  "file_hash":        "<64–128 hex>",
-  "file_size":        123456789,
-  "file_duration_ms": 7200000,
-  "file_name":        "movie.mp4"
-}
-```
-
-**Responses**: `200` with updated Room · `403` not host · `404` not found.
 
 ---
 

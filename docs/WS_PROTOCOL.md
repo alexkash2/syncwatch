@@ -40,6 +40,8 @@ Sent once on connect, and on reconnect if state changed.
 { "type": "user_left", "user_id", "username", "reason": "disconnect" }
 ```
 
+`reason` is `"disconnect"` (socket dropped / grace period expired) or `"left"` (user left via REST `POST /rooms/{id}/leave`; this variant omits `username` — clients key off `user_id`).
+
 ### `chat_message`
 ```json
 { "type": "chat_message", "id", "user_id", "username", "content", "created_at" }

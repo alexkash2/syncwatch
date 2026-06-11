@@ -13,7 +13,7 @@ cp .env.example .env
 | `SECRET_KEY`                  |    ✓     | `change-me-in-production`| App **refuses to start** if `ENVIRONMENT=production` and default value. Generate via `python -c "import secrets; print(secrets.token_hex(32))"`. |
 | `DB_PASSWORD`                 |    ✓     | `syncwatch`              | Postgres password (dev-friendly default).                              |
 | `ENVIRONMENT`                 |          | `development`            | Set to `production` to enforce the SECRET_KEY check.                  |
-| `CORS_ORIGINS`                |          | `http://localhost:3000,http://localhost` | Comma-separated allow-list, used both for REST CORS and WS Origin check. |
+| `CORS_ORIGINS`                |          | `http://localhost:3000,http://localhost,http://127.0.0.1:3000,http://127.0.0.1` | Comma-separated allow-list, used both for REST CORS and WS Origin check. |
 | `DATABASE_URL`                |          | (docker-compose sets it) | `postgresql+asyncpg://user:pass@host:5432/db`.                        |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` |          | `30`                     |                                                                       |
 | `REFRESH_TOKEN_EXPIRE_DAYS`   |          | `7`                      |                                                                       |
@@ -81,7 +81,7 @@ Current migrations (in order): 001 users · 002 rooms & participants · 003 part
 
 ## Health & readiness
 
-- `GET /health` — simple DB ping, returns `200 { status: "ok", db: "ok" }` or `503 { status: "error", db: <msg> }`. Used by Docker healthcheck (both `Dockerfile.HEALTHCHECK` and `docker-compose.yml`).
+- `GET /health` — simple DB ping, returns `200 { status: "ok", db: "ok" }` or `503 { status: "error", db: <msg> }`. Used by the Docker healthchecks (the `HEALTHCHECK` instruction in `backend/Dockerfile` and the `healthcheck` block in `docker-compose.yml`).
 - Postgres has its own `pg_isready` healthcheck; backend only starts after Postgres is healthy.
 - Frontend only starts after backend is healthy (`service_healthy`).
 

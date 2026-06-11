@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-06-11 — Pre-defense documentation sync + ws-ticket ordering fix
+
+Full docs-vs-code consistency pass before the project defense:
+
+- **API.md** — refresh tokens documented as single-use (the old "stays valid until
+  expiry" note contradicted both the code and SECURITY.md); removed the section for
+  the long-gone `PUT /rooms/{id}/file-info` endpoint.
+- **ARCHITECTURE.md / SECURITY.md / IDEAS.md** — scrubbed the stale "host-only
+  playback control" leftovers; control has been open to all participants since the
+  viewer-control release. IDEAS.md section on playback rights dropped (shipped),
+  remaining ideas renumbered.
+- **TESTING.md / README** — test counts updated (74 backend, 44 frontend) and both
+  file tables completed (2 backend + 6 frontend test files were undocumented).
+- **DEPLOYMENT.md** — real 4-origin `CORS_ORIGINS` default; `HEALTHCHECK` wording.
+- **WS_PROTOCOL.md** — documented both `user_left` reasons (`disconnect` / `left`).
+- `/api/auth/ws-ticket` now cancels the reconnect grace timer only **after** the
+  room/participant authorization checks, so a non-member request can't clear
+  someone's reconnect bookkeeping as a side effect.
+- Dropped `PLAN.md` (fully superseded by `docs/`), replaced the stock Vite template
+  README in `frontend/` with a real one, cleaned `SyncWatch_opis_projektu.docx`
+  metadata.
+
 ## 2026-06-04 — Frontend redesign: light/emerald port (branch `redesign/frontend-emerald`)
 
 Ported the new design prototype (light minimalism · emerald accent ·

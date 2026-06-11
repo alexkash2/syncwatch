@@ -13,66 +13,7 @@ Complexity scale:
 
 ---
 
-## 1. Playback rights for non-host viewers (Tester's bug #1)
-
-### Context
-Right now play / pause / seek can only be done by the host (see
-`docs/ARCHITECTURE.md` → "Host-only playback control"). The server
-rejects control messages from non-hosts with `error/not_host`, the
-frontend disables the buttons, and clicks surface a hint:
-"Only the host can control playback".
-
-This is **deliberate** — chosen to avoid the N-way sync problem. The
-tester thinks it's a bug: "the joiner has no rights, can't pause or
-seek".
-
-### Direction options (need a decision)
-
-#### Option A — keep as is, improve the UX (S)
-This is **not a bug**, it's a design decision. Just make the UI more
-explicit:
-- A clear "Viewer mode — playback controlled by host" badge inside the
-  player for non-hosts.
-- First-time room onboarding for viewers explaining what "viewer" means.
-- Don't render play/pause/seek buttons at all for viewers, or render
-  them with a lock icon and "host only" caption, without clickable
-  affordance.
-
-**Complexity:** S. Frontend only, no protocol changes.
-
-#### Option B — co-host / delegated control (M)
-The host can grant a specific participant a "co-host" flag; the server
-then accepts play/pause/seek from them too. The single-source-of-truth
-property is preserved (multiple "writers", but not everyone).
-- DB: add `room_participants.is_cohost: bool`.
-- WS: new `grant_control` / `revoke_control` messages (from host).
-  Server-side check `is_host or is_cohost` on play/pause/seek.
-- UI: a "Give control" button next to each participant for the host;
-  active control buttons for the co-host.
-- Edge cases: what if host and co-host hit pause at the same time?
-  Today "last message wins" — that's acceptable.
-
-**Complexity:** M. Migration + new WS commands + UI.
-
-#### Option C — local pause for self only (M, **not recommended**)
-Each participant can pause **their own** player without touching the
-server. The server still considers the room playing, drift correction
-via `sync_check` will try to push the participant back to the canonical
-timestamp → drift banner shows up → bad UX.
-
-**Complexity:** M, but architecturally dubious. Better skipped.
-
-### Open questions
-- What did the tester actually mean by "no rights"? Clarify:
-  - even the host can't control (then it's a different bug — `isHost`
-    detection)
-  - or it's a viewer, and the behaviour is by-design
-- If we go with B (co-host) — who can grant? Only the host, or a chain
-  of delegation?
-
----
-
-## 2. Room passwords
+## 1. Room passwords
 
 ### Context
 Today a room = `room_code` (8 alnum chars, server-generated). Anyone
@@ -113,7 +54,7 @@ public or private scenarios.
 
 ---
 
-## 3. Host kicking participants
+## 2. Host kicking participants
 
 ### Context
 Today the host has no way to remove a single participant. If someone
@@ -158,10 +99,8 @@ them is to close the whole room. That's too coarse.
 
 ## Next steps
 
-1. For #1, clarify with the tester what they meant — pick option
-   A / B / C.
-2. For #2 and #3 — agree on the order. Both are needed for "private"
+1. For #1 and #2 — agree on the order. Both are needed for "private"
    rooms but they're independent, so they can land in parallel or in
    sequence.
-3. Once a direction is agreed, move the chosen pieces into `TODO.md`
+2. Once a direction is agreed, move the chosen pieces into `TODO.md`
    under P2 (important before opening to the public).
