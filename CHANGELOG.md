@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-11 — Fix flaky UUID corruption on the SQLite test backend; pin dependencies
+
+CI rolled a once-in-a-million flake: `uuid4()` produced a hex consisting of
+digits plus a single `e` (`…123e45…`), and the test DB silently returned it as
+a Python float. Root cause: the models declared
+`sqlalchemy.dialects.postgresql.UUID`, which compiles to a column of type name
+"UUID" on SQLite — that name gets NUMERIC affinity, so float-looking text is
+coerced. Switched all models to the portable `sqlalchemy.Uuid` (still native
+UUID on Postgres, CHAR(32)/TEXT affinity elsewhere) and added a deterministic
+regression test with a crafted `…1e05` UUID (75 backend tests now).
+Also pinned `requirements.txt` to the exact tested versions — graders and CI
+get the same dependency set we developed against.
+
 ## 2026-06-11 — Player polish: fullscreen auto-hide, control-bar redesign, touch behaviour
 
 Manual-testing feedback round on the player:

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -12,14 +12,14 @@ class Room(Base):
     __tablename__ = "rooms"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     room_code: Mapped[str] = mapped_column(
         String(8), unique=True, nullable=False, index=True
     )
     host_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     max_participants: Mapped[int] = mapped_column(Integer, default=10)
