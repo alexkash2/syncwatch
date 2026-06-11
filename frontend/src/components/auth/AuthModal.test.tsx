@@ -75,6 +75,10 @@ describe('AuthModal', () => {
   it('closes on Escape key', async () => {
     const closeAuthModal = vi.fn();
     renderModal({ closeAuthModal });
+    // The keydown listener lives on the dialog element, and the component's own
+    // autofocus is async (requestAnimationFrame) — focus a field synchronously so
+    // the key event reliably bubbles through the dialog regardless of timing.
+    screen.getByLabelText('Email').focus();
     await userEvent.keyboard('{Escape}');
     expect(closeAuthModal).toHaveBeenCalledTimes(1);
   });
